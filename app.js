@@ -174,7 +174,7 @@ async function getOcrWorker() {
   if (ocrWorker) return ocrWorker;
   const base = new URL("vendor/tesseract/", location.href).href;
   setOcrStatus("載入辨識引擎…", 0);
-  ocrWorker = await Tesseract.createWorker("chi_tra+eng", 1, {
+  ocrWorker = await Tesseract.createWorker("chi_tra+chi_sim+eng", 1, {
     workerPath: base + "worker.min.js",
     langPath: base + "tessdata",
     corePath: base,
