@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>賭螺預測 · 全部紀錄</title>
+  <link rel="stylesheet" href="styles.css?v=7" />
+</head>
+<body class="page-records" data-page="records">
+  <div class="bg-glow"></div>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">🐚</span>
+      <div>
+        <h1>全部紀錄</h1>
+        <p>檢視已載入的 <strong id="dataCount">0</strong> 筆對局。改儲存格會立即儲存，也可新增或刪除。變更存在此瀏覽器，並在下載 Excel 時寫入。</p>
+      </div>
+    </div>
+    <nav class="site-nav">
+      <a href="index.html">預測</a>
+      <a href="records.html" class="on">全部紀錄</a>
+    </nav>
+  </header>
+
+  <main>
+    <section id="dataPanel" class="panel data-panel">
+      <div class="data-tools">
+        <button id="addRowBtn" class="primary-btn tiny" type="button">新增一列</button>
+        <label class="ghost-btn file-label">開啟 Excel<input id="excelFile" type="file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" hidden /></label>
+        <button id="saveExcelBtn" class="ghost-btn" type="button">下載 Excel</button>
+        <span id="unsavedPill" class="pill unsaved-pill hidden" data-unsaved><span data-unsaved-text>尚有 0 筆未寫入 Excel</span></span>
+        <label class="check-label"><input id="clearExtrasOnOpen" type="checkbox" /> 開啟時清除瀏覽器新增</label>
+        <input id="dataFilter" class="data-filter" type="search" placeholder="搜尋螺、心情或贏家" />
+        <span id="fileName" class="pill">尚未載入</span>
+        <span class="pill">顯示 <span id="dataShown">0</span></span>
+      </div>
+      <div class="data-table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>卡爾</th>
+              <th>逮蝦</th>
+              <th>螺神</th>
+              <th>螺寶</th>
+              <th>啵塞咚</th>
+              <th>礦工</th>
+              <th>爆螺</th>
+              <th>拖拉機</th>
+              <th>船長</th>
+              <th>赢的螺</th>
+              <th class="col-actions"></th>
+            </tr>
+          </thead>
+          <tbody id="dataBody"></tbody>
+        </table>
+      </div>
+      <p id="dataEmpty" class="data-empty hidden">沒有符合的紀錄。</p>
+      <span id="dataHint" class="hint"></span>
+    </section>
+  </main>
+
+  <footer>
+    <p>資料來源：<span id="footSource">尚未載入 Excel</span> · 共 <span id="footCount">0</span> 筆歷史對局</p>
+  </footer>
+
+  <script src="vendor/xlsx/xlsx.full.min.js"></script>
+  <script src="app.js?v=7"></script>
+</body>
+</html>

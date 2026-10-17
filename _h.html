@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>賭螺預測 · 歷史比對</title>
+  <link rel="stylesheet" href="styles.css?v=7" />
+</head>
+<body>
+  <div class="bg-glow"></div>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">🐚</span>
+      <div>
+        <h1>賭螺預測器</h1>
+        <p>輸入 6 隻螺與牠們的心情，從 <strong id="recordCount">0</strong> 筆歷史紀錄中找出完全符合或最接近的結果。</p>
+      </div>
+    </div>
+    <button id="resetBtn" class="ghost-btn" type="button">重設</button>
+  </header>
+
+  <main>
+    <section class="panel shot-panel">
+      <div class="panel-head">
+        <h2><span class="step">📷</span> 上傳截圖自動辨識</h2>
+        <div class="ocr-actions">
+          <button id="shotBtn" class="ghost-btn" type="button">選擇圖片</button>
+          <button id="clearShotBtn" class="ghost-btn hidden" type="button">清除截圖</button>
+        </div>
+      </div>
+      <div id="dropzone" class="dropzone" tabindex="0">
+        <input id="shotInput" type="file" accept="image/*" hidden />
+        <div class="dropzone-inner">
+          <span class="dropzone-icon">🖼️</span>
+          <p>拖放截圖到此處，或 <strong>點擊選擇</strong>，也可直接 <kbd>Ctrl</kbd>+<kbd>V</kbd> 貼上</p>
+          <span class="dropzone-sub">自動辨識 6 隻螺與牠們的心情</span>
+        </div>
+      </div>
+      <div id="shotPreviewWrap" class="shot-preview hidden">
+        <img id="shotPreview" alt="截圖預覽" />
+      </div>
+      <div id="ocrBar" class="ocr-bar hidden">
+        <div class="ocr-progress"><span id="ocrProgress"></span></div>
+        <span id="ocrStatus" class="ocr-status">準備中…</span>
+      </div>
+      <details id="ocrTextWrap" class="ocr-text hidden">
+        <summary>辨識出的文字</summary>
+        <pre id="ocrText"></pre>
+      </details>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2><span class="step">1</span> 選擇 6 隻螺並設定心情</h2>
+        <div class="head-actions">
+          <div class="counter" id="counter">已選 <strong>0</strong> / 6</div>
+          <button id="clearPickBtn" class="ghost-btn" type="button">清空選擇</button>
+        </div>
+      </div>
+      <div id="conchGrid" class="conch-grid"></div>
+      <div class="actions">
+        <button id="submitBtn" class="primary-btn" type="button" disabled>開始比對</button>
+        <span id="hint" class="hint">請選擇 6 隻螺，並為每隻選擇心情。</span>
+      </div>
+    </section>
+
+    <section class="panel manage-panel">
+      <div class="panel-head">
+        <h2><span class="step">+</span> 新增紀錄</h2>
+        <span id="extraCount" class="pill">0 筆</span>
+      </div>
+      <p class="panel-sub">新增一筆對局：勾選 6 隻螺、設定牠們的心情與「贏的螺」。資料存在此瀏覽器，納入比對，並在下載 Excel 時一併寫入。</p>
+      <div id="addForm" class="add-form"></div>
+      <div class="actions">
+        <button id="addRecordBtn" class="primary-btn" type="button" disabled>新增紀錄</button>
+        <span id="addHint" class="hint"></span>
+      </div>
+      <details id="extraWrap" class="extra-wrap hidden">
+        <summary>已新增的紀錄（<span id="extraSummaryCount">0</span>）</summary>
+        <div id="extraList" class="record-list"></div>
+      </details>
+    </section>
+
+    <section id="dataPanel" class="panel data-panel">
+      <div class="panel-head">
+        <h2><span class="step">⇅</span> 讀取 / 寫入 Excel</h2>
+        <span id="fileName" class="pill">尚未載入</span>
+      </div>
+      <p class="panel-sub">歷史紀錄改由 Excel 提供。開啟試算表（欄位：9 隻螺的心情 + 赢的螺），或把 .xlsx 拖放到這塊。下載時會寫入目前全部紀錄。</p>
+      <div class="data-actions">
+        <label class="ghost-btn file-label">開啟 Excel<input id="excelFile" type="file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" hidden /></label>
+        <button id="saveExcelBtn" class="ghost-btn" type="button">下載 Excel</button>
+        <label class="check-label"><input id="clearExtrasOnOpen" type="checkbox" /> 開啟時清除瀏覽器新增</label>
+      </div>
+      <span id="dataHint" class="hint"></span>
+    </section>
+
+    <section id="results" class="results hidden">
+      <div id="matchBanner" class="match-banner"></div>
+
+      <div id="missSave" class="panel miss-save hidden">
+        <div class="panel-head">
+          <h2><span class="step">✎</span> 標記這局贏的螺</h2>
+        </div>
+        <p class="panel-sub">沒有完全符合的紀錄。點選贏的那隻，這局就會加入比對資料，下載 Excel 時一併寫入。</p>
+        <div id="missPicks" class="miss-picks"></div>
+        <div class="actions">
+          <button id="missSaveBtn" class="primary-btn" type="button" disabled>加入紀錄</button>
+          <span id="missHint" class="hint">請點選贏的螺。</span>
+        </div>
+      </div>
+
+      <div id="predictionCard" class="prediction-card hidden"></div>
+
+      <div class="results-grid">
+        <div class="panel">
+          <div class="panel-head">
+            <h2><span class="step exact-step">=</span> 完全符合的歷史紀錄</h2>
+            <span id="exactCount" class="pill">0 筆</span>
+          </div>
+          <div id="exactList" class="record-list"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h2><span class="step close-step">≈</span> 最接近的歷史紀錄</h2>
+            <span id="closeCount" class="pill">0 筆</span>
+          </div>
+          <div id="closeList" class="record-list"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>資料來源：<span id="footSource">尚未載入 Excel</span> · 共 <span id="footCount">0</span> 筆歷史對局</p>
+  </footer>
+
+  <script src="vendor/opencv/opencv.js"></script>
+  <script src="vendor/xlsx/xlsx.full.min.js"></script>
+  <script src="vendor/tesseract/tesseract.min.js"></script>
+  <script src="app.js?v=7"></script>
+
+<script>
+function beacon(m){ fetch("/__ocr__?r="+encodeURIComponent(m)).catch(()=>{}); }
+window.onerror=function(msg,src,l,c,e){ beacon("ONERROR "+msg+" @"+l); };
+setTimeout(()=>{
+  try{
+    beacon("init all="+allRecords().length+" extra="+extraRecords.length+" count="+document.getElementById("recordCount").textContent+" foot="+document.getElementById("footCount").textContent);
+    addRecord({conch:{"卡爾":"呆","逮蝦":"黑","螺神":"怒","螺寶":"墨","啵塞咚":"笑","礦工":"呆"}, winner:"螺神"});
+    beacon("afterAdd extra="+extraRecords.length+" all="+allRecords().length+" count="+document.getElementById("recordCount").textContent+" extraCount="+document.getElementById("extraCount").textContent);
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet([
+      ["卡爾","逮蝦","螺神","螺寶","啵塞咚","礦工","爆螺","拖拉機","船長","赢的螺"],
+      ["呆","黑","怒","墨","笑","呆","","","","螺神"]
+    ]);
+    XLSX.utils.book_append_sheet(wb, ws, "工作表1");
+    const parsed = parseWorkbook(XLSX.write(wb, { type: "array", bookType: "xlsx" }));
+    beacon("parsed="+parsed.records.length+" winner="+parsed.records[0].winner+" 卡爾="+parsed.records[0].conch["卡爾"]);
+    const round = parseWorkbook(XLSX.write(workbookFromRecords(allRecords()), { type: "array", bookType: "xlsx" }));
+    beacon("roundtrip n="+round.records.length+" lastWinner="+round.records[round.records.length-1].winner);
+    // localStorage persisted
+    beacon("lsLen="+(localStorage.getItem(EXTRA_KEY)||"").length);
+    // dedupe/delete button presence
+    beacon("delBtns="+document.querySelectorAll("#extraList .record-del").length);
+  }catch(e){ beacon("ERR "+(e&&e.stack?e.stack.slice(0,300):e)); }
+},1200);
+</script>
+</body>
+</html>

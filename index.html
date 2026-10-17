@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>賭螺預測 · 歷史比對</title>
+  <link rel="stylesheet" href="styles.css?v=7" />
+</head>
+<body>
+  <div class="bg-glow"></div>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">🐚</span>
+      <div>
+        <h1>賭螺預測器</h1>
+        <p>輸入 6 隻螺與牠們的心情，從 <strong id="recordCount">0</strong> 筆歷史紀錄中找出完全符合或最接近的結果。</p>
+      </div>
+    </div>
+    <nav class="site-nav">
+      <a href="index.html" class="on">預測</a>
+      <a href="records.html">全部紀錄</a>
+    </nav>
+  </header>
+
+  <main>
+    <div id="unsavedBar" class="unsaved-bar hidden" data-unsaved>
+      <span data-unsaved-text>尚有 0 筆未寫入 Excel</span>
+      <button id="unsavedDownloadBtn" class="ghost-btn" type="button">下載 Excel</button>
+    </div>
+    <section class="panel shot-panel">
+      <div class="panel-head">
+        <h2><span class="step">📷</span> 上傳截圖自動辨識</h2>
+        <div class="ocr-actions">
+          <button id="shotBtn" class="ghost-btn" type="button">選擇圖片</button>
+          <button id="clearShotBtn" class="ghost-btn hidden" type="button">清除截圖</button>
+        </div>
+      </div>
+      <div id="dropzone" class="dropzone" tabindex="0">
+        <input id="shotInput" type="file" accept="image/*" hidden />
+        <div class="dropzone-inner">
+          <span class="dropzone-icon">🖼️</span>
+          <p>拖放截圖到此處，或 <strong>點擊選擇</strong>，也可直接 <kbd>Ctrl</kbd>+<kbd>V</kbd> 貼上</p>
+          <span class="dropzone-sub">自動辨識 6 隻螺與牠們的心情</span>
+        </div>
+      </div>
+      <div id="shotPreviewWrap" class="shot-preview hidden">
+        <img id="shotPreview" alt="截圖預覽" />
+      </div>
+      <div id="ocrBar" class="ocr-bar hidden">
+        <div class="ocr-progress"><span id="ocrProgress"></span></div>
+        <span id="ocrStatus" class="ocr-status">準備中…</span>
+      </div>
+      <details id="ocrTextWrap" class="ocr-text hidden">
+        <summary>辨識出的文字</summary>
+        <pre id="ocrText"></pre>
+      </details>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2><span class="step">1</span> 選擇 6 隻螺並設定心情</h2>
+        <div class="head-actions">
+          <div class="counter" id="counter">已選 <strong>0</strong> / 6</div>
+          <button id="showAllBtn" class="ghost-btn hidden" type="button">顯示全部螺</button>
+          <button id="clearPickBtn" class="ghost-btn" type="button">清空選擇</button>
+        </div>
+      </div>
+      <div id="conchGrid" class="conch-grid"></div>
+      <div class="actions">
+        <button id="submitBtn" class="primary-btn" type="button" disabled>開始比對</button>
+        <span id="hint" class="hint">請選擇 6 隻螺，並為每隻選擇心情。</span>
+      </div>
+    </section>
+
+    <section id="results" class="results hidden">
+      <div id="matchBanner" class="match-banner"></div>
+      <div id="predictionCard" class="prediction-card hidden"></div>
+
+      <div id="missSave" class="panel miss-save hidden">
+        <div class="panel-head">
+          <h2><span class="step">✎</span> 標記這局贏的螺</h2>
+        </div>
+        <p class="panel-sub">沒有完全符合的紀錄。點選贏的那隻，這局就會加入比對資料。</p>
+        <div id="missPicks" class="miss-picks"></div>
+        <div class="actions">
+          <button id="missSaveBtn" class="primary-btn" type="button" disabled>加入紀錄</button>
+          <button id="missDownloadBtn" class="ghost-btn" type="button">下載 Excel</button>
+          <span id="missUnsaved" class="pill unsaved-pill hidden" data-unsaved><span data-unsaved-text>尚有 0 筆未寫入 Excel</span></span>
+          <span id="missHint" class="hint">請點選贏的螺。</span>
+        </div>
+      </div>
+
+      <div class="results-grid">
+        <div class="panel">
+          <div class="panel-head">
+            <h2><span class="step exact-step">=</span> 完全符合的歷史紀錄</h2>
+            <span id="exactCount" class="pill">0 筆</span>
+          </div>
+          <div id="exactList" class="record-list"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h2><span class="step close-step">≈</span> 最接近的歷史紀錄</h2>
+            <span id="closeCount" class="pill">0 筆</span>
+          </div>
+          <div id="closeList" class="record-list"></div>
+        </div>
+      </div>
+    </section>
+    <p id="dataHint" class="hint page-hint"></p>
+  </main>
+
+  <footer>
+    <p>資料來源：<span id="footSource">尚未載入 Excel</span> · 共 <span id="footCount">0</span> 筆歷史對局 · 新增與修改在<a href="records.html">全部紀錄</a></p>
+  </footer>
+
+  <script src="vendor/opencv/opencv.js"></script>
+  <script src="vendor/xlsx/xlsx.full.min.js"></script>
+  <script src="vendor/tesseract/tesseract.min.js"></script>
+  <script src="app.js?v=7"></script>
+</body>
+</html>
