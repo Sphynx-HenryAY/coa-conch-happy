@@ -1,0 +1,44 @@
+{
+  "name": "賭螺預測器",
+  "short_name": "賭螺預測",
+  "description": "輸入 6 隻螺與牠們的心情，從歷史對局紀錄中比對出完全符合或最接近的結果。",
+  "lang": "zh-Hant",
+  "dir": "ltr",
+  "start_url": "./index.html",
+  "scope": "./",
+  "id": "./",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#0b1020",
+  "theme_color": "#0b1020",
+  "categories": ["utilities", "games"],
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "全部紀錄",
+      "short_name": "紀錄",
+      "url": "./records.html",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}
