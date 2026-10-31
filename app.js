@@ -312,8 +312,6 @@ function drawOverlay(boxes) {
   }
   const img = el("shotPreview");
   const W = img.naturalWidth || 1, H = img.naturalHeight || 1;
-  ov.style.width = `${W}px`;
-  ov.style.height = `${H}px`;
   ov.innerHTML = boxes.map((b, i) =>
     `<div class="shot-box" style="left:${(b.x / W) * 100}%;top:${(b.y / H) * 100}%;width:${(b.w / W) * 100}%;height:${(b.h / H) * 100}%"><span>${i + 1}</span></div>`
   ).join("");

@@ -473,21 +473,20 @@ kbd {
 .shot-preview {
   margin-top: 16px;
   position: relative;
-  display: block;
+  display: inline-block;
   max-width: 100%;
-  overflow: auto;
-  border-radius: 12px;
+  text-align: center;
 }
 .shot-preview img {
   display: block;
-  max-width: none;
-  max-height: none;
+  max-width: 100%;
+  height: auto;
   border-radius: 12px;
   border: 1px solid var(--panel-border);
   box-shadow: 0 14px 34px rgba(0, 0, 0, 0.35);
 }
 
-.shot-overlay { position: absolute; top: 0; left: 0; pointer-events: none; }
+.shot-overlay { position: absolute; inset: 0; pointer-events: none; }
 
 .shot-box {
   position: absolute;
