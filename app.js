@@ -312,6 +312,8 @@ function drawOverlay(boxes) {
   }
   const img = el("shotPreview");
   const W = img.naturalWidth || 1, H = img.naturalHeight || 1;
+  ov.style.width = `${W}px`;
+  ov.style.height = `${H}px`;
   ov.innerHTML = boxes.map((b, i) =>
     `<div class="shot-box" style="left:${(b.x / W) * 100}%;top:${(b.y / H) * 100}%;width:${(b.w / W) * 100}%;height:${(b.h / H) * 100}%"><span>${i + 1}</span></div>`
   ).join("");
@@ -330,6 +332,8 @@ async function handleImageFile(file) {
   try {
     const loaded = await loadImageEl(file);
     img = loaded.img;
+    const oldOverlay = el("shotOverlay");
+    if (oldOverlay) oldOverlay.remove();
     el("shotPreview").src = loaded.url;
     el("shotPreviewWrap").classList.remove("hidden");
   } catch (e) {
@@ -486,8 +490,6 @@ function applyDetected(pairs) {
   if (results) results.classList.add("hidden");
   const dz = el("dropzone");
   if (dz) dz.classList.add("collapsed");
-  const preview = el("shotPreviewWrap");
-  if (preview) preview.classList.add("is-small");
   renderGrid();
   updateCounter();
   const submit = el("submitBtn");
@@ -497,7 +499,6 @@ function applyDetected(pairs) {
 function clearShot() {
   el("shotPreview").removeAttribute("src");
   el("shotPreviewWrap").classList.add("hidden");
-  el("shotPreviewWrap").classList.remove("is-small");
   el("ocrBar").classList.add("hidden");
   el("ocrTextWrap").classList.add("hidden");
   el("clearShotBtn").classList.add("hidden");
