@@ -844,6 +844,8 @@ footer {
 
 .settings-panel .panel-sub { max-width: 780px; }
 
+.settings-panel + .settings-panel { margin-top: 18px; }
+
 .name-table-wrap {
   overflow: auto;
   border: 1px solid var(--panel-border);

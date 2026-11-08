@@ -10,6 +10,11 @@ const BASE_NAME_KEY = "conchBaseName_v1";
 const LANG_KEY = "conchLang_v1";
 const NAMES_KEY = "conchNames_v1";
 const PICK_KEY = "conchPick_v1";
+const MOOD_ICONS_KEY = "conchMoodIcons_v1";
+const MOOD_SIG = 14;
+const MOOD_MATCH_MIN = 0.9;
+const MOOD_MATCH_MARGIN = 0.04;
+const MOOD_MAX_TEMPLATES = 10;
 
 const state = {
   selected: new Set(),
@@ -590,6 +595,194 @@ function bestEmotion(text) {
   return { emotion: best, count: bestN };
 }
 
+/* ---------- Mood icon templates ---------- */
+
+function loadMoodIcons() {
+  const size = MOOD_SIG * MOOD_SIG;
+  const out = {};
+  EMOTIONS.forEach((em) => { out[em] = []; });
+  try {
+    const raw = localStorage.getItem(MOOD_ICONS_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return out;
+    EMOTIONS.forEach((em) => {
+      const list = Array.isArray(parsed[em]) ? parsed[em] : [];
+      out[em] = list
+        .filter((sig) => Array.isArray(sig) && sig.length === size && sig.every((v) => typeof v === "number" && isFinite(v)))
+        .slice(-MOOD_MAX_TEMPLATES);
+    });
+  } catch (e) { /* ignore */ }
+  return out;
+}
+
+let moodIcons = loadMoodIcons();
+let moodPending = {};
+
+function saveMoodIcons() {
+  try { localStorage.setItem(MOOD_ICONS_KEY, JSON.stringify(moodIcons)); } catch (e) { /* ignore */ }
+}
+
+function cosineSimilarity(a, b) {
+  let sum = 0;
+  for (let i = 0; i < a.length; i++) sum += a[i] * b[i];
+  return sum;
+}
+
+function moodIconScores(sig) {
+  const scores = {};
+  EMOTIONS.forEach((em) => {
+    let best = -Infinity;
+    (moodIcons[em] || []).forEach((tpl) => {
+      const score = cosineSimilarity(sig, tpl);
+      if (score > best) best = score;
+    });
+    if (best > -Infinity) scores[em] = best;
+  });
+  return scores;
+}
+
+function matchMoodIcon(sig) {
+  if (!Array.isArray(sig) || sig.length !== MOOD_SIG * MOOD_SIG) return null;
+  const scores = moodIconScores(sig);
+  const ranked = Object.keys(scores).map((em) => [em, scores[em]]).sort((a, b) => b[1] - a[1]);
+  if (!ranked.length) return null;
+  const emotion = ranked[0][0];
+  const score = ranked[0][1];
+  const runnerUp = ranked.length > 1 ? ranked[1][1] : -1;
+  if (score < MOOD_MATCH_MIN) return null;
+  if (runnerUp > -1 && score - runnerUp < MOOD_MATCH_MARGIN) return null;
+  return { emotion, score };
+}
+
+function learnMoodIcon(emotion, sig) {
+  if (!EMOTIONS.includes(emotion)) return false;
+  if (!Array.isArray(sig) || sig.length !== MOOD_SIG * MOOD_SIG) return false;
+  let changed = false;
+  EMOTIONS.forEach((em) => {
+    if (em === emotion) return;
+    const existing = moodIcons[em] || [];
+    const kept = existing.filter((tpl) => cosineSimilarity(tpl, sig) < MOOD_MATCH_MIN);
+    if (kept.length !== existing.length) { moodIcons[em] = kept; changed = true; }
+  });
+  const list = moodIcons[emotion] || (moodIcons[emotion] = []);
+  if (!list.some((tpl) => cosineSimilarity(tpl, sig) >= 0.995)) {
+    list.push(sig);
+    if (list.length > MOOD_MAX_TEMPLATES) list.splice(0, list.length - MOOD_MAX_TEMPLATES);
+    changed = true;
+  }
+  if (changed) saveMoodIcons();
+  return true;
+}
+
+function iconInk(r, g, b) {
+  const mx = Math.max(r, g, b);
+  const mn = Math.min(r, g, b);
+  const sat = mx === 0 ? 0 : (mx - mn) / mx;
+  const value = mx / 255;
+  return (sat > 0.35 && value > 0.25) || value < 0.42;
+}
+
+function iconSignature(img, box) {
+  try {
+    const iw = img.naturalWidth || img.width || 0;
+    const ih = img.naturalHeight || img.height || 0;
+    if (!iw || !ih) return null;
+    const rx0 = Math.max(0, Math.round(box.x + box.w * 0.02));
+    const rx1 = Math.min(iw, Math.round(box.x + box.w * 0.5));
+    const ry0 = Math.max(0, Math.round(box.y + box.h * 0.05));
+    const ry1 = Math.min(ih, Math.round(box.y + box.h * 0.5));
+    const w = rx1 - rx0;
+    const h = ry1 - ry0;
+    if (w < 24 || h < 24) return null;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    ctx.drawImage(img, rx0, ry0, w, h, 0, 0, w, h);
+    const data = ctx.getImageData(0, 0, w, h).data;
+
+    const mask = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4;
+        mask[y * w + x] = iconInk(data[i], data[i + 1], data[i + 2]) ? 1 : 0;
+      }
+    }
+
+    const seen = new Uint8Array(w * h);
+    let icon = null;
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const start = y * w + x;
+        if (!mask[start] || seen[start]) continue;
+        const stack = [start];
+        seen[start] = 1;
+        let x0 = x, x1 = x, y0 = y, y1 = y, count = 0;
+        while (stack.length) {
+          const p = stack.pop();
+          count++;
+          const px = p % w;
+          const py = (p - px) / w;
+          if (px < x0) x0 = px;
+          if (px > x1) x1 = px;
+          if (py < y0) y0 = py;
+          if (py > y1) y1 = py;
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              const nx = px + dx;
+              const ny = py + dy;
+              if (nx < 1 || ny < 1 || nx >= w - 1 || ny >= h - 1) continue;
+              const ni = ny * w + nx;
+              if (mask[ni] && !seen[ni]) { seen[ni] = 1; stack.push(ni); }
+            }
+          }
+        }
+        const cw = x1 - x0 + 1;
+        const ch = y1 - y0 + 1;
+        const ar = cw / ch;
+        if (count < 120 || cw < 18 || ch < 18 || cw > 130 || ch > 130) continue;
+        if (ar < 0.55 || ar > 1.8) continue;
+        if (!icon || count > icon.count) icon = { x: x0, y: y0, w: cw, h: ch, count };
+      }
+    }
+    if (!icon) return null;
+
+    const pad = Math.max(1, Math.round(Math.max(icon.w, icon.h) * 0.04));
+    const sx0 = Math.max(0, icon.x - pad);
+    const sy0 = Math.max(0, icon.y - pad);
+    const sx1 = Math.min(w, icon.x + icon.w + pad);
+    const sy1 = Math.min(h, icon.y + icon.h + pad);
+    if (sx1 - sx0 < 4 || sy1 - sy0 < 4) return null;
+
+    const values = [];
+    for (let gy = 0; gy < MOOD_SIG; gy++) {
+      for (let gx = 0; gx < MOOD_SIG; gx++) {
+        const xa = Math.floor(sx0 + ((sx1 - sx0) * gx) / MOOD_SIG);
+        const xb = Math.max(xa + 1, Math.floor(sx0 + ((sx1 - sx0) * (gx + 1)) / MOOD_SIG));
+        const ya = Math.floor(sy0 + ((sy1 - sy0) * gy) / MOOD_SIG);
+        const yb = Math.max(ya + 1, Math.floor(sy0 + ((sy1 - sy0) * (gy + 1)) / MOOD_SIG));
+        let sum = 0, n = 0;
+        for (let y = ya; y < Math.min(yb, h); y++) {
+          for (let x = xa; x < Math.min(xb, w); x++) {
+            const i = (y * w + x) * 4;
+            sum += 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+            n++;
+          }
+        }
+        values.push(n ? sum / n : 0);
+      }
+    }
+    const mean = values.reduce((a, b) => a + b, 0) / values.length;
+    const centered = values.map((v) => v - mean);
+    const norm = Math.sqrt(centered.reduce((a, v) => a + v * v, 0)) || 1;
+    return centered.map((v) => v / norm);
+  } catch (e) {
+    return null;
+  }
+}
+
 function drawOverlay(boxes) {
   const wrap = el("shotPreviewWrap");
   let ov = el("shotOverlay");
@@ -647,6 +840,8 @@ async function handleImageFile(file) {
     const worker = await getOcrWorker();
     const pairs = [];
     const logLines = [];
+    let pendingUnmatched = 0;
+    moodPending = {};
 
     for (let i = 0; i < boxes.length; i++) {
       const b = boxes[i];
@@ -656,17 +851,35 @@ async function handleImageFile(file) {
       const nameText = (nd.data.text || "").trim();
       const name = bestConch(nameText);
 
-      const emCanvas = cropRegion(img, b, 0.5, 1.0, 3).canvas;
-      const ed = await worker.recognize(emCanvas);
-      const emText = (ed.data.text || "").trim();
-      const em = bestEmotion(emText);
+      const sig = iconSignature(img, b);
+      let em = { emotion: null, count: 0 };
+      let emText = "";
+      let emFromIcon = false;
+      if (sig) {
+        const iconMatch = matchMoodIcon(sig);
+        if (iconMatch) {
+          em = { emotion: iconMatch.emotion, count: 1 };
+          emFromIcon = true;
+        }
+      }
+      if (!em.emotion) {
+        const emCanvas = cropRegion(img, b, 0.5, 1.0, 3).canvas;
+        const ed = await worker.recognize(emCanvas);
+        emText = (ed.data.text || "").trim();
+        em = bestEmotion(emText);
+      }
+
+      if (name.name) {
+        if (sig) moodPending[name.name] = sig;
+        if (sig && !em.emotion) pendingUnmatched++;
+      }
 
       logLines.push(t("ocr.logLine", {
         i: i + 1,
         nameText: nameText.replace(/\s+/g, ""),
         name: name.name ? conchLabel(name.name) : "?",
         score: Math.round((name.score || 0) * 100),
-        emText: emText.replace(/\s+/g, ""),
+        emText: emFromIcon ? t("ocr.iconTag") : emText.replace(/\s+/g, ""),
         emotion: em.emotion ? emotionLabel(em.emotion) : "?"
       }));
       if (name.name) {
@@ -685,6 +898,8 @@ async function handleImageFile(file) {
         emotion: em.emotion ? emotionLabel(em.emotion) : "?"
       }), 0.15 + 0.85 * ((i + 1) / boxes.length));
     }
+
+    if (pendingUnmatched) logLines.push("", t("ocr.moodLearnHint"));
 
     el("ocrText").textContent = logLines.join("\n");
     el("ocrTextWrap").classList.remove("hidden");
@@ -817,6 +1032,7 @@ function clearShot() {
   state.compact = false;
   lineupExpanded = false;
   state.uncertain.clear();
+  moodPending = {};
   if (el("conchGrid")) renderGrid();
 }
 
@@ -1207,11 +1423,19 @@ function renderGrid() {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
         if (!state.selected.has(name)) toggleConch(name, true);
+        const previous = state.emotions[name];
         state.emotions[name] = em;
         state.uncertain.delete(name);
+        let learned = false;
+        const sig = moodPending[name];
+        if (sig && previous !== em) {
+          const iconMatch = matchMoodIcon(sig);
+          if (!iconMatch || iconMatch.emotion !== em) learned = learnMoodIcon(em, sig);
+        }
         renderGrid();
         updateCounter();
         refreshResults();
+        if (learned) flashHint(t("pick.moodLearned", { emotion: emotionLabel(em) }));
       });
       row.appendChild(btn);
     });
@@ -1885,6 +2109,14 @@ function resetNameSettings() {
   if (hint) hint.textContent = t("settings.resetDone");
 }
 
+function resetMoodIcons() {
+  moodIcons = {};
+  moodPending = {};
+  try { localStorage.removeItem(MOOD_ICONS_KEY); } catch (e) { /* ignore */ }
+  const hint = el("moodHint");
+  if (hint) hint.textContent = t("settings.moodResetDone");
+}
+
 function initSettings() {
   initI18n();
   renderNameSettings();
@@ -1892,6 +2124,8 @@ function initSettings() {
   if (save) save.addEventListener("click", saveNameSettings);
   const reset = el("resetNamesBtn");
   if (reset) reset.addEventListener("click", resetNameSettings);
+  const resetMood = el("resetMoodBtn");
+  if (resetMood) resetMood.addEventListener("click", resetMoodIcons);
 }
 
 if (document.body.dataset.page === "records") initRecords();

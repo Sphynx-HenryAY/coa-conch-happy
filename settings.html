@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png" />
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
-  <link rel="stylesheet" href="styles.css?v=13" />
+  <link rel="stylesheet" href="styles.css?v=14" />
 </head>
 <body class="page-settings" data-page="settings">
   <div class="bg-glow"></div>
@@ -64,14 +64,27 @@
         <span id="namesHint" class="hint" data-i18n="settings.note">提示：空白會使用預設名稱。修改後請按「儲存名稱」。</span>
       </div>
     </section>
+
+    <section class="panel settings-panel">
+      <div class="panel-head">
+        <h2><span class="step">☺</span> <span data-i18n="settings.moodTitle">心情圖示學習</span></h2>
+        <div class="head-actions">
+          <button id="resetMoodBtn" class="ghost-btn" type="button" data-i18n="settings.moodReset">清除學習資料</button>
+        </div>
+      </div>
+      <p class="panel-sub" data-i18n="settings.moodDesc">遊戲中的心情是圖示。上傳截圖後，若心情沒有自動辨識，請在預測頁手動點選一次；系統會記住該圖示，下次自動辨識。</p>
+      <div class="actions">
+        <span id="moodHint" class="hint" data-i18n="settings.moodHint">學習資料只存在此瀏覽器，每種心情最多保留 10 個圖示。</span>
+      </div>
+    </section>
   </main>
 
   <footer>
     <p data-i18n="settings.footer">名稱只儲存在此瀏覽器。下載 Excel 時仍使用固定的繁體中文欄位名稱。</p>
   </footer>
 
-  <script src="i18n.js?v=13"></script>
-  <script src="app.js?v=13"></script>
+  <script src="i18n.js?v=14"></script>
+  <script src="app.js?v=14"></script>
   <script>
     if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
       addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));

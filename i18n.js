@@ -85,6 +85,8 @@ const I18N = {
     "ocr.done": "完成：偵測 {boxes} 框、辨識 {names} 名稱、{emotions} 心情。已自動填入可辨識的部分，請確認後再比對。",
     "ocr.failed": "辨識失敗：{msg}",
     "ocr.logLine": "第 {i} 框  ② 名稱「{nameText}」→ {name}（{score}%）  ③ 心情「{emText}」→ {emotion}",
+    "ocr.iconTag": "圖示",
+    "ocr.moodLearnHint": "有心情圖示尚未辨識。請在下方為該螺點選一次心情，系統會記住這個圖示，下次自動辨識。",
 
     "pick.title": "選擇 6 隻螺並設定心情",
     "pick.counter": "已選 <strong>{n}</strong> / 6",
@@ -99,6 +101,7 @@ const I18N = {
     "pick.maxFlash": "最多只能選 6 隻螺，請先取消一隻。",
     "pick.cleared": "已清空選擇。",
     "pick.restored": "已復原選擇。",
+    "pick.moodLearned": "已記住「{emotion}」的圖示，下次會自動辨識。",
 
     "miss.title": "標記這局贏的螺",
     "miss.desc": "沒有完全符合的紀錄。點選贏的那隻，這局就會加入比對資料。",
@@ -195,6 +198,11 @@ const I18N = {
     "settings.colHant": "繁體中文",
     "settings.colHans": "简体中文",
     "settings.note": "提示：空白會使用預設名稱。修改後請按「儲存名稱」。",
+    "settings.moodTitle": "心情圖示學習",
+    "settings.moodDesc": "遊戲中的心情是圖示。上傳截圖後，若心情沒有自動辨識，請在預測頁手動點選一次；系統會記住該圖示，下次自動辨識。",
+    "settings.moodReset": "清除學習資料",
+    "settings.moodResetDone": "已清除所有學習的心情圖示。",
+    "settings.moodHint": "學習資料只存在此瀏覽器，每種心情最多保留 10 個圖示。",
     "settings.footer": "名稱只儲存在此瀏覽器。下載 Excel 時仍使用固定的繁體中文欄位名稱。"
   },
 
@@ -250,6 +258,8 @@ const I18N = {
     "ocr.done": "完成：侦测 {boxes} 框、辨识 {names} 名称、{emotions} 心情。已自动填入可辨识的部分，请确认后再比对。",
     "ocr.failed": "辨识失败：{msg}",
     "ocr.logLine": "第 {i} 框  ② 名称「{nameText}」→ {name}（{score}%）  ③ 心情「{emText}」→ {emotion}",
+    "ocr.iconTag": "图示",
+    "ocr.moodLearnHint": "有心情图示尚未辨识。请在下方为该螺点选一次心情，系统会记住这个图示，下次自动辨识。",
 
     "pick.title": "选择 6 只螺并设置心情",
     "pick.counter": "已选 <strong>{n}</strong> / 6",
@@ -264,6 +274,7 @@ const I18N = {
     "pick.maxFlash": "最多只能选 6 只螺，请先取消一只。",
     "pick.cleared": "已清空选择。",
     "pick.restored": "已复原选择。",
+    "pick.moodLearned": "已记住「{emotion}」的图示，下次会自动辨识。",
 
     "miss.title": "标记这局赢的螺",
     "miss.desc": "没有完全符合的纪录。点选赢的那只，这局就会加入比对资料。",
@@ -360,6 +371,11 @@ const I18N = {
     "settings.colHant": "繁體中文",
     "settings.colHans": "简体中文",
     "settings.note": "提示：空白会使用默认名称。修改后请按「保存名称」。",
+    "settings.moodTitle": "心情图示学习",
+    "settings.moodDesc": "游戏中的心情是图示。上传截图后，若心情没有自动辨识，请在预测页手动点选一次；系统会记住该图示，下次自动辨识。",
+    "settings.moodReset": "清除学习资料",
+    "settings.moodResetDone": "已清除所有学习的心情图示。",
+    "settings.moodHint": "学习资料只存在此浏览器，每种心情最多保留 10 个图示。",
     "settings.footer": "名称只存在此浏览器。下载 Excel 时仍使用固定的繁体中文栏位名称。"
   },
 
@@ -415,6 +431,8 @@ const I18N = {
     "ocr.done": "Done: {boxes} boxes, {names} names and {emotions} moods recognised. Matching fields were filled in automatically; please check before matching.",
     "ocr.failed": "Recognition failed: {msg}",
     "ocr.logLine": "Box {i}  ② Name “{nameText}” → {name} ({score}%)  ③ Mood “{emText}” → {emotion}",
+    "ocr.iconTag": "icon",
+    "ocr.moodLearnHint": "Some mood icons are not recognised yet. Tap the correct mood once below; the app will remember that icon and recognise it next time.",
 
     "pick.title": "Pick 6 conches and set their moods",
     "pick.counter": "Selected <strong>{n}</strong> / 6",
@@ -429,6 +447,7 @@ const I18N = {
     "pick.maxFlash": "You can only pick 6 conches. Remove one first.",
     "pick.cleared": "Selection cleared.",
     "pick.restored": "Selection restored.",
+    "pick.moodLearned": "Learned the “{emotion}” icon. It will be recognised automatically next time.",
 
     "miss.title": "Mark the winning conch",
     "miss.desc": "No exact match. Tap the conch that won to add this round to the comparison data.",
@@ -525,6 +544,11 @@ const I18N = {
     "settings.colHant": "Traditional Chinese",
     "settings.colHans": "Simplified Chinese",
     "settings.note": "Tip: blank fields fall back to the default name. Press “Save names” after editing.",
+    "settings.moodTitle": "Mood icon learning",
+    "settings.moodDesc": "Moods in the game are icons. After uploading a screenshot, tap the correct mood once on the Predict page when it is not recognised; the app will remember that icon and recognise it next time.",
+    "settings.moodReset": "Clear learned data",
+    "settings.moodResetDone": "All learned mood icons were cleared.",
+    "settings.moodHint": "Learned data stays in this browser, up to 10 icons per mood.",
     "settings.footer": "Names are stored in this browser only. Excel downloads keep the fixed Traditional Chinese column names."
   }
 };
