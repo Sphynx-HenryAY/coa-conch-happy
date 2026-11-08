@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png" />
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
-  <link rel="stylesheet" href="styles.css?v=9" />
+  <link rel="stylesheet" href="styles.css?v=11" />
 </head>
 <body class="page-records" data-page="records">
   <div class="bg-glow"></div>
@@ -21,43 +21,49 @@
     <div class="brand">
       <span class="logo">🐚</span>
       <div>
-        <h1>全部紀錄</h1>
-        <p>檢視已載入的 <strong id="dataCount">0</strong> 筆對局。改儲存格會立即儲存，也可新增或刪除。變更存在此瀏覽器，並在下載 Excel 時寫入。</p>
+        <h1 data-i18n="header.recordsTitle">全部紀錄</h1>
+        <p><span data-i18n="header.recordsIntroPrefix">檢視已載入的</span> <strong id="dataCount">0</strong> <span data-i18n="header.recordsIntroSuffix">筆對局。改儲存格會立即儲存，也可新增或刪除。變更存在此瀏覽器，並在下載 Excel 時寫入。</span></p>
       </div>
     </div>
     <nav class="site-nav">
-      <a href="index.html">預測</a>
-      <a href="records.html" class="on">全部紀錄</a>
+      <a href="index.html" data-i18n="nav.predict">預測</a>
+      <a href="records.html" class="on" data-i18n="nav.records">全部紀錄</a>
+      <a href="settings.html" data-i18n="nav.settings">名稱設定</a>
+      <div class="lang-switch" role="group" data-i18n-aria="lang.label">
+        <button class="lang-btn" type="button" data-lang="zh-Hant" aria-pressed="true">繁</button>
+        <button class="lang-btn" type="button" data-lang="zh-Hans" aria-pressed="false">简</button>
+        <button class="lang-btn" type="button" data-lang="en" aria-pressed="false">EN</button>
+      </div>
     </nav>
   </header>
 
   <main>
     <section id="dataPanel" class="panel data-panel">
       <div class="data-tools">
-        <button id="addRowBtn" class="primary-btn tiny" type="button">新增一列</button>
-        <label class="ghost-btn file-label">開啟 Excel<input id="excelFile" type="file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" hidden /></label>
-        <button id="saveExcelBtn" class="ghost-btn" type="button">下載 Excel</button>
+        <button id="addRowBtn" class="primary-btn tiny" type="button" data-i18n="records.addRow">新增一列</button>
+        <label class="ghost-btn file-label"><span data-i18n="records.openExcel">開啟 Excel</span><input id="excelFile" type="file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" hidden /></label>
+        <button id="saveExcelBtn" class="ghost-btn" type="button" data-i18n="records.download">下載 Excel</button>
         <span id="unsavedPill" class="pill unsaved-pill hidden" data-unsaved><span data-unsaved-text>尚有 0 筆未寫入 Excel</span></span>
-        <label class="check-label"><input id="clearExtrasOnOpen" type="checkbox" /> 開啟時清除瀏覽器新增</label>
-        <input id="dataFilter" class="data-filter" type="search" placeholder="搜尋螺、心情或贏家" />
+        <label class="check-label"><input id="clearExtrasOnOpen" type="checkbox" /> <span data-i18n="records.clearExtras">開啟時清除瀏覽器新增</span></label>
+        <input id="dataFilter" class="data-filter" type="search" data-i18n-placeholder="records.search" placeholder="搜尋螺、心情或贏家" />
         <span id="fileName" class="pill">尚未載入</span>
-        <span class="pill">顯示 <span id="dataShown">0</span></span>
+        <span class="pill"><span data-i18n="records.showing">顯示</span> <span id="dataShown">0</span></span>
       </div>
       <div class="data-table-wrap">
         <table class="data-table">
           <thead>
             <tr>
-              <th>#</th>
-              <th>卡爾</th>
-              <th>逮蝦</th>
-              <th>螺神</th>
-              <th>螺寶</th>
-              <th>啵塞咚</th>
-              <th>礦工</th>
-              <th>爆螺</th>
-              <th>拖拉機</th>
-              <th>船長</th>
-              <th>赢的螺</th>
+              <th data-i18n="records.colIndex">#</th>
+              <th data-conch-head="卡爾">卡爾</th>
+              <th data-conch-head="逮蝦">逮蝦</th>
+              <th data-conch-head="螺神">螺神</th>
+              <th data-conch-head="螺寶">螺寶</th>
+              <th data-conch-head="啵塞咚">啵塞咚</th>
+              <th data-conch-head="礦工">礦工</th>
+              <th data-conch-head="爆螺">爆螺</th>
+              <th data-conch-head="拖拉機">拖拉機</th>
+              <th data-conch-head="船長">船長</th>
+              <th data-i18n="records.colWinner">赢的螺</th>
               <th class="col-actions"></th>
             </tr>
           </thead>
@@ -70,11 +76,12 @@
   </main>
 
   <footer>
-    <p>資料來源：<span id="footSource">尚未載入 Excel</span> · 共 <span id="footCount">0</span> 筆歷史對局</p>
+    <p><span data-i18n="footer.source">資料來源：</span><span id="footSource">尚未載入 Excel</span><span data-i18n="footer.totalPrefix"> · 共 </span><span id="footCount">0</span><span data-i18n="footer.totalSuffix"> 筆歷史對局</span></p>
   </footer>
 
   <script src="vendor/xlsx/xlsx.full.min.js"></script>
-  <script src="app.js?v=9"></script>
+  <script src="i18n.js?v=11"></script>
+  <script src="app.js?v=11"></script>
   <script>
     if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
       addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));

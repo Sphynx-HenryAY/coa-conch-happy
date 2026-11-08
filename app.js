@@ -7,6 +7,9 @@ const EXCEL_HEADER = CONCH_LIST.concat(["赢的螺"]);
 const EXTRA_KEY = "conchExtraRecords_v1";
 const BASE_KEY = "conchBaseRecords_v1";
 const BASE_NAME_KEY = "conchBaseName_v1";
+const LANG_KEY = "conchLang_v1";
+const NAMES_KEY = "conchNames_v1";
+const PICK_KEY = "conchPick_v1";
 
 const state = {
   selected: new Set(),
@@ -17,6 +20,265 @@ const state = {
 };
 
 const el = (id) => document.getElementById(id);
+
+/* ---------- Language & conch-name settings ---------- */
+
+function loadLang() {
+  try {
+    const saved = localStorage.getItem(LANG_KEY);
+    if (saved && SUPPORTED_LANGS.includes(saved)) return saved;
+  } catch (e) { /* ignore */ }
+  const nav = (navigator.language || "").toLowerCase();
+  if (nav.startsWith("en")) return "en";
+  if (nav.includes("hans") || nav === "zh-cn" || nav === "zh-sg") return "zh-Hans";
+  return "zh-Hant";
+}
+
+let lang = loadLang();
+
+function t(key, vars) {
+  const table = I18N[lang] || I18N["zh-Hant"];
+  let text = table[key] != null ? table[key] : (I18N["zh-Hant"][key] != null ? I18N["zh-Hant"][key] : key);
+  if (vars) {
+    Object.keys(vars).forEach((name) => {
+      text = text.split("{" + name + "}").join(String(vars[name]));
+    });
+  }
+  return text;
+}
+
+function loadConchNames() {
+  try {
+    const raw = localStorage.getItem(NAMES_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
+  } catch (e) { /* ignore */ }
+  return {};
+}
+
+let conchNamesStored = loadConchNames();
+let aliasIndexCache = null;
+
+function defaultConchNames(canon) {
+  return CONCH_DEFAULT_NAMES[canon] || { en: "", "zh-Hant": canon, "zh-Hans": canon };
+}
+
+function conchNameSet(canon) {
+  const defaults = defaultConchNames(canon);
+  const saved = conchNamesStored[canon] || {};
+  const out = {};
+  ["en", "zh-Hant", "zh-Hans"].forEach((code) => {
+    const value = typeof saved[code] === "string" ? saved[code].trim() : "";
+    out[code] = value || defaults[code] || "";
+  });
+  return out;
+}
+
+function conchLabel(canon, useLang) {
+  const names = conchNameSet(canon);
+  return names[useLang || lang] || names["zh-Hant"] || canon;
+}
+
+function conchNameValues(canon) {
+  const names = conchNameSet(canon);
+  const set = new Set([canon, names.en, names["zh-Hant"], names["zh-Hans"]]);
+  return [...set].filter(Boolean);
+}
+
+function emotionLabel(emotion) {
+  const labels = EMOTION_LABELS[emotion];
+  return (labels && (labels[lang] || labels["zh-Hant"])) || emotion;
+}
+
+function escHtml(value) {
+  return String(value == null ? "" : value).replace(/[&<>"']/g, (ch) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  }[ch]));
+}
+
+function normName(value) {
+  return String(value == null ? "" : value)
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[\s\u00a0\u3000]+/g, "")
+    .replace(/[·・.,，。!！?？:：;；'"“”‘’`()（）\[\]【】{}<>《》_\-—–~～\/\\|@#$%^&*+=]/g, "");
+}
+
+function editDistance(a, b) {
+  if (a === b) return 0;
+  const m = a.length;
+  const n = b.length;
+  if (!m) return n;
+  if (!n) return m;
+  let prev = Array.from({ length: n + 1 }, (_, i) => i);
+  for (let i = 1; i <= m; i++) {
+    const cur = [i];
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost);
+    }
+    prev = cur;
+  }
+  return prev[n];
+}
+
+function nameScore(text, alias) {
+  if (!text || !alias) return 0;
+  if (text === alias) return 1;
+  if (alias.length >= 2 && text.includes(alias)) return 1;
+  if (/[\u3400-\u9fff]/.test(alias)) {
+    const chars = [...alias];
+    const hit = chars.filter((ch) => text.includes(ch)).length;
+    const ratio = hit / chars.length;
+    return ratio >= 0.5 ? Math.min(0.97, 0.5 + ratio * 0.47) : 0;
+  }
+  if (alias.length < 2) return 0;
+  const ratio = 1 - editDistance(text, alias) / Math.max(text.length, alias.length);
+  return ratio >= 0.7 ? Math.min(0.95, ratio) : 0;
+}
+
+function conchAliasIndex() {
+  if (aliasIndexCache) return aliasIndexCache;
+  const list = [];
+  CONCH_LIST.forEach((canon) => {
+    conchNameValues(canon).forEach((name) => {
+      const norm = normName(name);
+      if (norm) list.push({ canon, norm, raw: name });
+    });
+  });
+  list.sort((a, b) => b.norm.length - a.norm.length);
+  aliasIndexCache = list;
+  return list;
+}
+
+function canonicalAliasExact(value) {
+  const norm = normName(value);
+  if (!norm) return null;
+  for (const canon of CONCH_LIST) {
+    if (normName(canon) === norm) return canon;
+  }
+  for (const alias of conchAliasIndex()) {
+    if (alias.norm === norm) return alias.canon;
+  }
+  return null;
+}
+
+function applyStaticI18n() {
+  document.documentElement.lang = lang;
+  document.querySelectorAll("[data-i18n]").forEach((node) => {
+    node.textContent = t(node.dataset.i18n);
+  });
+  document.querySelectorAll("[data-i18n-html]").forEach((node) => {
+    node.innerHTML = t(node.dataset.i18nHtml);
+  });
+  document.querySelectorAll("[data-i18n-placeholder]").forEach((node) => {
+    node.setAttribute("placeholder", t(node.dataset.i18nPlaceholder));
+  });
+  document.querySelectorAll("[data-i18n-alt]").forEach((node) => {
+    node.setAttribute("alt", t(node.dataset.i18nAlt));
+  });
+  document.querySelectorAll("[data-i18n-aria]").forEach((node) => {
+    node.setAttribute("aria-label", t(node.dataset.i18nAria));
+  });
+  const page = document.body.dataset.page || "index";
+  const titleKey = page === "records" ? "app.recordsTitle" : (page === "settings" ? "app.settingsTitle" : "app.indexTitle");
+  document.title = t(titleKey);
+  document.querySelectorAll("[data-lang]").forEach((btn) => {
+    const active = btn.dataset.lang === lang;
+    btn.classList.toggle("on", active);
+    btn.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+}
+
+function initI18n() {
+  applyStaticI18n();
+  document.querySelectorAll("[data-lang]").forEach((btn) => {
+    btn.addEventListener("click", () => setLanguage(btn.dataset.lang));
+  });
+}
+
+function applyTableHeaders() {
+  document.querySelectorAll("[data-conch-head]").forEach((th) => {
+    th.textContent = conchLabel(th.dataset.conchHead);
+  });
+}
+
+function refreshPageText() {
+  const page = document.body.dataset.page || "index";
+  if (page === "records") {
+    applyTableHeaders();
+    renderDataTable();
+    updateCounts();
+    noteDataset();
+    return;
+  }
+  if (page === "settings") {
+    document.querySelectorAll("[data-name-label]").forEach((node) => {
+      node.textContent = "🐚 " + conchLabel(node.dataset.nameLabel);
+    });
+    return;
+  }
+  const prevResults = state.results;
+  renderGrid();
+  state.results = prevResults;
+  updateCounter();
+  updateCounts();
+  if (prevResults) renderResults({ scroll: false });
+  noteDataset();
+}
+
+function setLanguage(next) {
+  if (!SUPPORTED_LANGS.includes(next)) return;
+  lang = next;
+  try { localStorage.setItem(LANG_KEY, lang); } catch (e) { /* ignore */ }
+  applyStaticI18n();
+  refreshPageText();
+}
+
+function savePickState() {
+  try {
+    if (!state.selected.size) {
+      localStorage.removeItem(PICK_KEY);
+      return;
+    }
+    localStorage.setItem(PICK_KEY, JSON.stringify({
+      selected: [...state.selected],
+      emotions: { ...state.emotions },
+      uncertain: [...state.uncertain].filter((name) => state.selected.has(name)),
+      missWinner: state.selected.has(missWinner) ? missWinner : "",
+      compact: state.compact,
+      lineupExpanded
+    }));
+  } catch (e) { /* ignore */ }
+}
+
+function restorePickState() {
+  try {
+    const raw = localStorage.getItem(PICK_KEY);
+    if (!raw) return;
+    const saved = JSON.parse(raw);
+    if (!saved || typeof saved !== "object") return;
+    const selected = Array.isArray(saved.selected)
+      ? saved.selected.filter((name, i, list) => CONCH_LIST.includes(name) && list.indexOf(name) === i).slice(0, MAX_CONCH)
+      : [];
+    if (!selected.length) return;
+    state.selected = new Set(selected);
+    state.emotions = {};
+    const emotions = saved.emotions && typeof saved.emotions === "object" ? saved.emotions : {};
+    state.selected.forEach((name) => {
+      if (EMOTIONS.includes(emotions[name])) state.emotions[name] = emotions[name];
+    });
+    const uncertain = Array.isArray(saved.uncertain) ? saved.uncertain : [];
+    state.uncertain = new Set(uncertain.filter((name) => state.selected.has(name)));
+    missWinner = state.selected.has(saved.missWinner) ? saved.missWinner : "";
+    state.compact = !!saved.compact && state.selected.size > 0;
+    lineupExpanded = !!saved.lineupExpanded && state.selected.size === MAX_CONCH;
+  } catch (e) { /* ignore */ }
+}
 
 function loadStoredRecords(key) {
   try {
@@ -73,7 +335,7 @@ function updateCounts() {
   set("footCount", String(total));
   set("dataCount", String(total));
   const extraCount = el("extraCount");
-  if (extraCount) extraCount.textContent = `${extraRecords.length} 筆`;
+  if (extraCount) extraCount.textContent = t("results.count", { n: extraRecords.length });
   const summary = el("extraSummaryCount");
   if (summary) summary.textContent = String(extraRecords.length);
   const wrap = el("extraWrap");
@@ -84,7 +346,7 @@ function updateCounts() {
 
 function updateUnsaved() {
   const n = extraRecords.length;
-  const text = `尚有 ${n} 筆未寫入 Excel`;
+  const text = t("unsaved.text", { n });
   document.querySelectorAll("[data-unsaved-text]").forEach((node) => {
     node.textContent = text;
   });
@@ -94,14 +356,17 @@ function updateUnsaved() {
 }
 
 function updateSourceLabel() {
-  const name = baseName || (baseRecords.length ? "瀏覽器暫存" : "");
+  const name = baseName || (baseRecords.length ? t("source.browser") : "");
   const pill = el("fileName");
   const foot = el("footSource");
-  if (pill) pill.textContent = name || "尚未載入";
-  if (foot) foot.textContent = name || "尚未載入 Excel";
+  if (pill) pill.textContent = name || t("source.notLoaded");
+  if (foot) foot.textContent = name || t("source.notLoadedExcel");
 }
 
 function init() {
+  initI18n();
+  restorePickState();
+  setOcrStatus(t("ocr.ready"), 0);
   updateCounts();
   renderGrid();
   updateCounter();
@@ -173,17 +438,17 @@ function setOcrStatus(text, pct) {
 async function getOcrWorker() {
   if (ocrWorker) return ocrWorker;
   const base = new URL("vendor/tesseract/", location.href).href;
-  setOcrStatus("載入辨識引擎…", 0);
+  setOcrStatus(t("ocr.engine"), 0);
   ocrWorker = await Tesseract.createWorker("chi_tra+chi_sim+eng", 1, {
     workerPath: base + "worker.min.js",
     langPath: base + "tessdata",
     corePath: base,
     workerBlobURL: false,
     logger: (m) => {
-      if (m.status === "loading tesseract core") setOcrStatus("載入辨識核心…", m.progress);
-      else if (m.status === "loading language traineddata") setOcrStatus("載入語言模型…", m.progress);
-      else if (m.status === "initializing api") setOcrStatus("初始化…", m.progress);
-      else if (m.status === "recognizing text") setOcrStatus("辨識文字中…", m.progress);
+      if (m.status === "loading tesseract core") setOcrStatus(t("ocr.core"), m.progress);
+      else if (m.status === "loading language traineddata") setOcrStatus(t("ocr.lang"), m.progress);
+      else if (m.status === "initializing api") setOcrStatus(t("ocr.init"), m.progress);
+      else if (m.status === "recognizing text") setOcrStatus(t("ocr.recognizing"), m.progress);
     }
   });
   return ocrWorker;
@@ -194,7 +459,7 @@ function loadImageEl(file) {
     const url = URL.createObjectURL(file);
     const im = new Image();
     im.onload = () => { resolve({ img: im, url }); };
-    im.onerror = () => { URL.revokeObjectURL(url); reject(new Error("圖片讀取失敗")); };
+    im.onerror = () => { URL.revokeObjectURL(url); reject(new Error("image load failed")); };
     im.src = url;
   });
 }
@@ -279,23 +544,31 @@ function cropRegion(img, b, y0, y1, scale) {
 }
 
 function bestConch(text) {
-  const t = (text || "").replace(/\s/g, "");
+  const norm = normName(text);
   let best = null, bestScore = 0;
-  for (const c of CONCH_LIST) {
-    if (t.includes(c)) return { name: c, score: 1 };
-    const chars = [...c];
-    const hit = chars.filter((ch) => t.includes(ch)).length;
-    const score = hit / chars.length;
-    if (score > bestScore) { bestScore = score; best = c; }
+  const perConch = {};
+  for (const alias of conchAliasIndex()) {
+    const score = nameScore(norm, alias.norm);
+    if (score > (perConch[alias.canon] || 0)) perConch[alias.canon] = score;
+  }
+  for (const canon of CONCH_LIST) {
+    const score = perConch[canon] || 0;
+    if (score > bestScore) { bestScore = score; best = canon; }
   }
   return { name: bestScore >= 0.5 ? best : null, score: bestScore };
 }
 
 function bestEmotion(text) {
-  const t = (text || "").replace(/\s/g, "");
+  const norm = normName(text);
   let best = null, bestN = 0;
   for (const em of EMOTIONS) {
-    const n = t.split(em).length - 1;
+    let n = 0;
+    (EMOTION_ALIASES[em] || [em]).forEach((alias) => {
+      const a = normName(alias);
+      if (!a) return;
+      if (/[\u3400-\u9fff]/.test(a)) n += norm.split(a).length - 1;
+      else if (a.length >= 3 && norm.includes(a)) n += 1;
+    });
     if (n > bestN) { bestN = n; best = em; }
   }
   return { emotion: best, count: bestN };
@@ -324,7 +597,7 @@ async function handleImageFile(file) {
   el("clearShotBtn").classList.remove("hidden");
   el("ocrTextWrap").classList.add("hidden");
   el("ocrText").textContent = "";
-  setOcrStatus("讀取圖片…", 0);
+  setOcrStatus(t("ocr.reading"), 0);
 
   let img;
   try {
@@ -335,13 +608,13 @@ async function handleImageFile(file) {
     el("shotPreview").src = loaded.url;
     el("shotPreviewWrap").classList.remove("hidden");
   } catch (e) {
-    setOcrStatus("無法讀取圖片。", 1);
+    setOcrStatus(t("ocr.readFail"), 1);
     ocrBusy = false;
     return;
   }
 
   try {
-    setOcrStatus("① 偵測螺的選項框…", 0.05);
+    setOcrStatus(t("ocr.detectBoxes"), 0.05);
     const cv = (await loadOpenCV()).cv;
     const src = cv.imread(img);
     const boxes = detectBoxes(cv, src);
@@ -349,11 +622,11 @@ async function handleImageFile(file) {
     drawOverlay(boxes);
 
     if (!boxes.length) {
-      setOcrStatus("① 找不到螺的選項框，請改用更清晰的截圖或手動選擇。", 1);
+      setOcrStatus(t("ocr.noBoxes"), 1);
       ocrBusy = false;
       return;
     }
-    setOcrStatus(`① 偵測到 ${boxes.length} 個選項框`, 0.15);
+    setOcrStatus(t("ocr.boxesFound", { n: boxes.length }), 0.15);
 
     const worker = await getOcrWorker();
     const pairs = [];
@@ -372,7 +645,14 @@ async function handleImageFile(file) {
       const emText = (ed.data.text || "").trim();
       const em = bestEmotion(emText);
 
-      logLines.push(`#${i + 1}  ② 名稱「${nameText.replace(/\s+/g, "")}」→ ${name.name || "?"}（${Math.round((name.score || 0) * 100)}%）  ③ 心情「${emText.replace(/\s+/g, "")}」→ ${em.emotion || "?"}`);
+      logLines.push(t("ocr.logLine", {
+        i: i + 1,
+        nameText: nameText.replace(/\s+/g, ""),
+        name: name.name ? conchLabel(name.name) : "?",
+        score: Math.round((name.score || 0) * 100),
+        emText: emText.replace(/\s+/g, ""),
+        emotion: em.emotion ? emotionLabel(em.emotion) : "?"
+      }));
       if (name.name) {
         pairs.push({
           conch: name.name,
@@ -382,7 +662,12 @@ async function handleImageFile(file) {
         });
       }
 
-      setOcrStatus(`① 框 ${i + 1}/${boxes.length}  ② 名稱：${name.name || "?"}  ③ 心情：${em.emotion || "?"}`, 0.15 + 0.85 * ((i + 1) / boxes.length));
+      setOcrStatus(t("ocr.boxStatus", {
+        i: i + 1,
+        total: boxes.length,
+        name: name.name ? conchLabel(name.name) : "?",
+        emotion: em.emotion ? emotionLabel(em.emotion) : "?"
+      }), 0.15 + 0.85 * ((i + 1) / boxes.length));
     }
 
     el("ocrText").textContent = logLines.join("\n");
@@ -390,10 +675,10 @@ async function handleImageFile(file) {
 
     const withEmotion = pairs.filter((p) => p.emotion);
     if (pairs.length) applyDetected(pairs);
-    setOcrStatus(`完成：偵測 ${boxes.length} 框、辨識 ${pairs.length} 名稱、${withEmotion.length} 心情。已自動填入可辨識的部分，請確認後再比對。`, 1);
+    setOcrStatus(t("ocr.done", { boxes: boxes.length, names: pairs.length, emotions: withEmotion.length }), 1);
   } catch (err) {
     console.error(err);
-    setOcrStatus("辨識失敗：" + (err && err.message ? err.message : err), 1);
+    setOcrStatus(t("ocr.failed", { msg: err && err.message ? err.message : err }), 1);
   } finally {
     ocrBusy = false;
   }
@@ -411,22 +696,32 @@ function collectWords(data) {
 }
 
 function matchConch(text) {
-  for (const c of CONCH_LIST) if (text.includes(c)) return c;
+  const norm = normName(text);
+  if (!norm) return null;
+  for (const alias of conchAliasIndex()) {
+    if (norm.includes(alias.norm)) return alias.canon;
+  }
   return null;
 }
 
 function emotionTokens(word) {
   const tokens = [];
   const chars = [...word.text];
-  const charsIn = chars.filter((ch) => EMOTIONS.includes(ch));
-  if (!charsIn.length) return tokens;
   const b = word.bbox;
   const w = (b.x1 - b.x0) / Math.max(chars.length, 1);
   chars.forEach((ch, i) => {
     if (EMOTIONS.includes(ch)) {
-      const cx = b.x0 + w * (i + 0.5);
-      tokens.push({ em: ch, cx, cy: (b.y0 + b.y1) / 2, conf: word.conf });
+      tokens.push({ em: ch, cx: b.x0 + w * (i + 0.5), cy: (b.y0 + b.y1) / 2, conf: word.conf });
     }
+  });
+  const norm = normName(word.text);
+  EMOTIONS.forEach((em) => {
+    (EMOTION_ALIASES[em] || []).forEach((alias) => {
+      const a = normName(alias);
+      if (a.length >= 3 && !/[\u3400-\u9fff]/.test(a) && norm.includes(a)) {
+        tokens.push({ em, cx: (b.x0 + b.x1) / 2, cy: (b.y0 + b.y1) / 2, conf: word.conf });
+      }
+    });
   });
   return tokens;
 }
@@ -545,7 +840,7 @@ function renderAddForm() {
       if (cb.checked) {
         if (addState.selected.size >= MAX_CONCH) {
           cb.checked = false;
-          flashAdd(`最多只能選 ${MAX_CONCH} 隻螺。`);
+          flashAdd(t("add.maxFlash", { n: MAX_CONCH }));
           return;
         }
         addState.selected.add(name);
@@ -557,13 +852,13 @@ function renderAddForm() {
       renderAddForm();
     });
     label.appendChild(cb);
-    label.insertAdjacentHTML("beforeend", `<span>🐚 ${name}</span>`);
+    label.insertAdjacentHTML("beforeend", `<span>🐚 ${escHtml(conchLabel(name))}</span>`);
     card.appendChild(label);
 
     const sel = document.createElement("select");
     sel.className = "emotion-select";
-    sel.innerHTML = `<option value="">心情…</option>` +
-      EMOTIONS.map((e) => `<option value="${e}">${e}</option>`).join("");
+    sel.innerHTML = `<option value="">${t("records.choose")}…</option>` +
+      EMOTIONS.map((e) => `<option value="${e}">${emotionLabel(e)}</option>`).join("");
     sel.value = addState.emotions[name] || "";
     sel.disabled = !addState.selected.has(name);
     sel.addEventListener("change", () => { addState.emotions[name] = sel.value; updateAddHint(); });
@@ -574,10 +869,10 @@ function renderAddForm() {
 
   const win = document.createElement("div");
   win.className = "add-winner";
-  win.innerHTML = `<span>贏的螺</span>`;
+  win.innerHTML = `<span>${t("records.colWinner")}</span>`;
   const ws = document.createElement("select");
-  ws.innerHTML = `<option value="">請選擇…</option>` +
-    [...addState.selected].map((n) => `<option value="${n}">${n}</option>`).join("");
+  ws.innerHTML = `<option value="">${t("records.choose")}…</option>` +
+    [...addState.selected].map((n) => `<option value="${n}">${escHtml(conchLabel(n))}</option>`).join("");
   ws.value = addState.winner || "";
   ws.disabled = addState.selected.size === 0;
   ws.addEventListener("change", () => { addState.winner = ws.value; updateAddHint(); });
@@ -592,12 +887,12 @@ function updateAddHint() {
   const missing = [...addState.selected].filter((c) => !addState.emotions[c]);
   el("addRecordBtn").disabled = !(n === MAX_CONCH && !missing.length && addState.winner);
   const hint = el("addHint");
-  if (n < MAX_CONCH) hint.textContent = `已選 ${n}/${MAX_CONCH}，還需要 ${MAX_CONCH - n} 隻。`;
-  else if (missing.length) hint.textContent = `請設定 ${missing.join("、")} 的心情。`;
+  if (n < MAX_CONCH) hint.textContent = t("add.need", { n, max: MAX_CONCH, left: MAX_CONCH - n });
+  else if (missing.length) hint.textContent = t("add.setMood", { names: missing.map((c) => conchLabel(c)).join(lang === "en" ? ", " : "、") });
   else if (!addState.winner) hint.textContent = addFromMatch
-    ? "沒有完全符合的紀錄。已填入這 6 隻螺，請選擇贏的螺。"
-    : "請選擇贏的螺。";
-  else hint.textContent = "可以新增！";
+    ? t("add.chooseWinnerMatch")
+    : t("add.chooseWinner");
+  else hint.textContent = t("add.ok");
   hint.style.color = addFromMatch && !addState.winner ? "var(--gold)" : "";
 }
 
@@ -617,7 +912,7 @@ function addRecord(record) {
   }
   extraRecords.push(rec);
   saveExtra();
-  if (record) setDataHint(`已加入 1 筆（贏：${rec.winner}）。下載 Excel 時會寫入這筆。`);
+  if (record) setDataHint(t("hint.addedOne", { winner: rec.winner ? conchLabel(rec.winner) : "-" }));
   if (!record) {
     addFromMatch = false;
     addState.selected.clear();
@@ -626,7 +921,7 @@ function addRecord(record) {
     const panel = document.querySelector(".manage-panel");
     if (panel) panel.classList.remove("prefilled");
     renderAddForm();
-    flashAdd("已新增 1 筆紀錄，並納入比對。");
+    flashAdd(t("hint.addedFlash"));
   }
   renderExtra();
   updateCounts();
@@ -644,13 +939,13 @@ function renderExtra() {
     const tags = Object.entries(rec.conch).map(([name, em]) => {
       let cls = "conch-tag";
       if (rec.winner === name) cls += " win";
-      return `<span class="${cls}">${name}<span class="em">${em}</span></span>`;
+      return `<span class="${cls}">${escHtml(conchLabel(name))}<span class="em">${escHtml(emotionLabel(em))}</span></span>`;
     }).join("");
     card.innerHTML = `
       <div class="record-top">
-        <span class="record-index">新增 #${i + 1}</span>
-        <span class="winner-badge">贏的螺 ${rec.winner || "-"}</span>
-        <button class="record-del" type="button">刪除</button>
+        <span class="record-index">${t("extra.addedIndex", { n: i + 1 })}</span>
+        <span class="winner-badge">${escHtml(t("results.winnerLabel", { name: rec.winner ? conchLabel(rec.winner) : "-" }))}</span>
+        <button class="record-del" type="button">${t("records.delete")}</button>
       </div>
       <div class="conch-tags">${tags}</div>`;
     card.querySelector(".record-del").addEventListener("click", () => {
@@ -674,23 +969,28 @@ function normCell(v) {
 }
 
 function parseWorkbook(data) {
-  if (typeof XLSX === "undefined") throw new Error("Excel 元件尚未載入");
+  if (typeof XLSX === "undefined") throw new Error(t("hint.xlsxMissing"));
   let bytes = data;
   let type = "array";
   if (data instanceof ArrayBuffer) bytes = new Uint8Array(data);
   else if (typeof Buffer !== "undefined" && Buffer.isBuffer && Buffer.isBuffer(data)) type = "buffer";
   const wb = XLSX.read(bytes, { type });
   const sheetName = wb.SheetNames[0];
-  if (!sheetName) throw new Error("找不到工作表");
+  if (!sheetName) throw new Error(t("hint.sheetMissing"));
   const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, raw: false, defval: "" });
+
+  const isWinHeader = (cell) => {
+    const norm = normName(cell);
+    return WIN_KEYS.some((key) => normName(key) === norm);
+  };
 
   let headerIdx = -1;
   let cols = null;
   const scan = Math.min(rows.length, 20);
   for (let i = 0; i < scan; i++) {
     const cells = (rows[i] || []).map(normCell);
-    const hits = CONCH_LIST.filter((name) => cells.includes(name)).length;
-    const hasWin = cells.some((c) => WIN_KEYS.includes(c));
+    const hits = new Set(cells.map(canonicalAliasExact).filter(Boolean)).size;
+    const hasWin = cells.some(isWinHeader);
     if (hits >= 3 || hasWin) { headerIdx = i; cols = cells; break; }
   }
 
@@ -699,10 +999,10 @@ function parseWorkbook(data) {
   let start = 0;
   if (cols) {
     CONCH_LIST.forEach((name) => {
-      const idx = cols.indexOf(name);
+      const idx = cols.findIndex((cell) => canonicalAliasExact(cell) === name);
       if (idx >= 0) conchCol[name] = idx;
     });
-    winIdx = cols.findIndex((c) => WIN_KEYS.includes(c));
+    winIdx = cols.findIndex(isWinHeader);
     start = headerIdx + 1;
   } else {
     CONCH_LIST.forEach((name, i) => { conchCol[name] = i; });
@@ -722,8 +1022,9 @@ function parseWorkbook(data) {
       const v = cells[idx] || "";
       if (EMOTIONS.includes(v)) conch[name] = v;
     });
-    let winner = winIdx >= 0 ? (cells[winIdx] || "") : "";
-    if (WINNER_ALIAS[winner]) { winner = WINNER_ALIAS[winner]; normalized++; }
+    let winnerRaw = winIdx >= 0 ? (cells[winIdx] || "") : "";
+    if (WINNER_ALIAS[winnerRaw]) { winnerRaw = WINNER_ALIAS[winnerRaw]; normalized++; }
+    const winner = canonicalAliasExact(winnerRaw) || winnerRaw;
     if (Object.keys(conch).length && CONCH_LIST.includes(winner)) records.push({ conch, winner });
     else skipped++;
   }
@@ -733,7 +1034,7 @@ function parseWorkbook(data) {
 function applyLoadedRecords(parsed, filename) {
   const { records, skipped, normalized } = parsed;
   if (!records.length) {
-    setDataHint("這份 Excel 沒有可讀的對局。請確認第一列是螺的名字，最後一欄是赢的螺。");
+    setDataHint(t("hint.excelNoGames"));
     return;
   }
   const clearBox = el("clearExtrasOnOpen");
@@ -748,11 +1049,11 @@ function applyLoadedRecords(parsed, filename) {
   updateCounts();
   refreshResults();
   if (el("dataBody")) renderDataTable();
-  const bits = [`已從「${baseName}」讀入 ${records.length} 筆。`];
-  if (skipped) bits.push(`略過 ${skipped} 列。`);
-  if (normalized) bits.push(`已把 ${normalized} 個「螺保」改為「螺寶」。`);
-  if (extraRecords.length) bits.push(`瀏覽器另有 ${extraRecords.length} 筆新增，下載時會一併寫入。`);
-  else bits.push("按「下載 Excel」可把目前紀錄寫成檔案。");
+  const bits = [t("hint.excelLoaded", { file: baseName, n: records.length })];
+  if (skipped) bits.push(t("hint.excelSkipped", { n: skipped }));
+  if (normalized) bits.push(t("hint.excelNormalized", { n: normalized }));
+  if (extraRecords.length) bits.push(t("hint.excelExtras", { n: extraRecords.length }));
+  else bits.push(t("hint.excelDownloadTip"));
   setDataHint(bits.join(""));
 }
 
@@ -760,9 +1061,9 @@ function readExcelFile(file) {
   const reader = new FileReader();
   reader.onload = () => {
     try { applyLoadedRecords(parseWorkbook(reader.result), file.name); }
-    catch (err) { setDataHint("無法讀取 Excel：" + (err && err.message ? err.message : err)); }
+    catch (err) { setDataHint(t("hint.excelReadFail", { msg: err && err.message ? err.message : err })); }
   };
-  reader.onerror = () => setDataHint("讀取檔案失敗。");
+  reader.onerror = () => setDataHint(t("hint.fileReadFail"));
   reader.readAsArrayBuffer(file);
 }
 
@@ -786,7 +1087,7 @@ function setupExcelDrop() {
     panel.classList.remove("dragging");
     const file = e.dataTransfer.files && e.dataTransfer.files[0];
     if (!file) return;
-    if (!/\.xlsx?$/i.test(file.name)) { setDataHint("請放下 .xlsx 或 .xls 檔。"); return; }
+    if (!/\.xlsx?$/i.test(file.name)) { setDataHint(t("hint.xlsxOnly")); return; }
     readExcelFile(file);
   });
 }
@@ -806,21 +1107,21 @@ function workbookFromRecords(records) {
 }
 
 function excelDownloadName() {
-  const raw = (baseName || "賭螺紀錄").replace(/[\\/:*?"<>|]/g, "_");
+  const raw = (baseName || t("records.defaultFileName")).replace(/[\\/:*?"<>|]/g, "_");
   if (/\.xlsx$/i.test(raw)) return raw;
   return raw.replace(/\.xls$/i, "") + ".xlsx";
 }
 
 function downloadExcel() {
   const records = allRecords();
-  if (!records.length) { setDataHint("沒有可寫入的紀錄。請到「全部紀錄」開啟 Excel，或先新增一筆。"); return; }
-  if (typeof XLSX === "undefined") { setDataHint("Excel 元件尚未載入。"); return; }
+  if (!records.length) { setDataHint(t("hint.noRecordsWrite")); return; }
+  if (typeof XLSX === "undefined") { setDataHint(t("hint.xlsxMissing")); return; }
   const name = excelDownloadName();
   const folded = extraRecords.length;
   try {
     XLSX.writeFile(workbookFromRecords(records), name);
   } catch (e) {
-    setDataHint("下載失敗：" + (e && e.message ? e.message : e));
+    setDataHint(t("hint.downloadFail", { msg: e && e.message ? e.message : e }));
     return;
   }
   if (folded) {
@@ -833,22 +1134,22 @@ function downloadExcel() {
   }
   updateCounts();
   setDataHint(folded
-    ? `已下載「${name}」，共 ${records.length} 筆。這 ${folded} 筆已併入瀏覽器暫存。`
-    : `已下載「${name}」，共 ${records.length} 筆。`);
+    ? t("hint.downloadedFolded", { name, n: records.length, folded })
+    : t("hint.downloaded", { name, n: records.length }));
 }
 
 function noteDataset() {
   if (!allRecords().length) {
     setDataHint(document.body.dataset.page === "records"
-      ? "尚未載入紀錄。請按「開啟 Excel」選擇試算表，或按「新增一列」。"
-      : "尚未載入紀錄。到「全部紀錄」開啟 Excel 後即可比對。");
+      ? t("hint.noneRecords")
+      : t("hint.nonePredict"));
     return;
   }
-  const name = baseName ? `（${baseName}）` : "";
+  const name = baseName ? ` (${baseName})` : "";
   if (document.body.dataset.page === "records") {
-    setDataHint(`已載入 ${allRecords().length} 筆${name}。改儲存格會立即儲存，下載 Excel 時寫入。`);
+    setDataHint(t("hint.loadedRecords", { n: allRecords().length, filePart: name }));
   } else {
-    setDataHint(`已還原此瀏覽器的 ${allRecords().length} 筆${name}。可到「全部紀錄」再開啟 Excel 取代。`);
+    setDataHint(t("hint.loadedPredict", { n: allRecords().length, filePart: name }));
   }
 }
 
@@ -866,8 +1167,8 @@ function renderGrid() {
 
     const top = document.createElement("div");
     top.className = "conch-top";
-    const unsure = state.uncertain.has(name) ? `<span class="uncertain-tag">請確認</span>` : "";
-    top.innerHTML = `<span class="conch-name">🐚 ${name}${unsure}</span><span class="conch-toggle">✓</span>`;
+    const unsure = state.uncertain.has(name) ? `<span class="uncertain-tag">${t("pick.uncertain")}</span>` : "";
+    top.innerHTML = `<span class="conch-name">🐚 ${escHtml(conchLabel(name))}${unsure}</span><span class="conch-toggle">✓</span>`;
     top.addEventListener("click", () => toggleConch(name));
     card.appendChild(top);
 
@@ -884,7 +1185,8 @@ function renderGrid() {
       btn.type = "button";
       btn.className = "emotion-btn";
       btn.dataset.em = em;
-      btn.textContent = em;
+      btn.textContent = emotionLabel(em);
+      btn.title = em;
       if (state.emotions[name] === em) btn.classList.add("active");
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -904,6 +1206,7 @@ function renderGrid() {
   const showAll = el("showAllBtn");
   if (showAll) showAll.classList.toggle("hidden", !(state.compact && state.selected.size > 0));
   refreshResults();
+  savePickState();
 }
 
 function toggleConch(name, forceSelect) {
@@ -913,7 +1216,7 @@ function toggleConch(name, forceSelect) {
     state.uncertain.delete(name);
   } else if (!state.selected.has(name)) {
     if (state.selected.size >= MAX_CONCH) {
-      flashHint(`最多只能選 ${MAX_CONCH} 隻螺，請先取消一隻。`);
+      flashHint(t("pick.maxFlash", { n: MAX_CONCH }));
       return;
     }
     state.selected.add(name);
@@ -924,18 +1227,18 @@ function toggleConch(name, forceSelect) {
 
 function updateCounter() {
   const n = state.selected.size;
-  el("counter").innerHTML = `已選 <strong>${n}</strong> / ${MAX_CONCH}`;
+  el("counter").innerHTML = t("pick.counter", { n });
 
   const ready = n === MAX_CONCH && CONCH_LIST.every((c) => !state.selected.has(c) || state.emotions[c]);
   el("submitBtn").disabled = !ready;
 
   if (n < MAX_CONCH) {
-    el("hint").textContent = `還需要再選 ${MAX_CONCH - n} 隻螺。`;
+    el("hint").textContent = t("pick.needMore", { n: MAX_CONCH - n });
   } else if (!ready) {
-    const missing = [...state.selected].filter((c) => !state.emotions[c]);
-    el("hint").textContent = `請為 ${missing.join("、")} 選擇心情。`;
+    const missing = [...state.selected].filter((c) => !state.emotions[c]).map((c) => conchLabel(c));
+    el("hint").textContent = t("pick.missing", { names: missing.join(lang === "en" ? ", " : "、") });
   } else {
-    el("hint").textContent = "完成！按「開始比對」尋找歷史紀錄。";
+    el("hint").textContent = t("pick.ready");
   }
 }
 
@@ -989,43 +1292,44 @@ function runMatch() {
   renderResults();
 }
 
-function renderResults() {
+function renderResults(options) {
   if (!state.results) return;
+  const opts = options || {};
   el("results").classList.remove("hidden");
   const { input, exact, closest, ranked, best, groupSize } = state.results;
 
   const banner = el("matchBanner");
   if (exact.length) {
     banner.className = "match-banner exact";
-    banner.textContent = `找到 ${exact.length} 筆完全符合的歷史紀錄！`;
+    banner.textContent = t("results.bannerExact", { n: exact.length });
   } else {
     banner.className = "match-banner none";
     const pct = Math.round((Math.floor(best / 100) / MAX_CONCH) * 100);
-    banner.textContent = `沒有完全符合的紀錄，以下顯示最接近的結果（最高相似度 ${pct}%）。`;
+    banner.textContent = t("results.bannerNone", { pct });
   }
 
   const pred = el("predictionCard");
   if (ranked.length) {
     pred.classList.remove("hidden");
     const [winner, count] = ranked[0];
-    const label = exact.length ? "完全符合紀錄中的最常勝出螺" : "最接近紀錄中的最常勝出螺";
+    const label = exact.length ? t("results.predExactLabel") : t("results.predCloseLabel");
     const chips = ranked.map(([w, c]) => {
       const pct = Math.round((c / groupSize) * 100);
-      return `<span class="dist-chip">${w} <strong>${c}</strong> · ${pct}%</span>`;
+      return `<span class="dist-chip">${escHtml(conchLabel(w))} <strong>${c}</strong> · ${pct}%</span>`;
     }).join("");
-    pred.innerHTML = `<h3>${label}</h3><div class="prediction-main"><span class="prediction-winner">${winner} · ${groupSize} 筆裡 ${count} 次</span></div><div class="distribution">${chips}</div>`;
+    pred.innerHTML = `<h3>${escHtml(label)}</h3><div class="prediction-main"><span class="prediction-winner">${escHtml(t("results.predMain", { name: conchLabel(winner), total: groupSize, count }))}</span></div><div class="distribution">${chips}</div>`;
   } else {
     pred.classList.add("hidden");
   }
 
-  el("exactCount").textContent = `${exact.length} 筆`;
-  el("closeCount").textContent = `${closest.length} 筆`;
+  el("exactCount").textContent = t("results.count", { n: exact.length });
+  el("closeCount").textContent = t("results.count", { n: closest.length });
   renderList(el("exactList"), exact, input, true);
   renderList(el("closeList"), closest, input, false);
   renderMissSave(exact.length === 0);
   if (exact.length === 0 && el("addForm")) prefillAddFromPick();
   const scrollTarget = pred && !pred.classList.contains("hidden") ? pred : el("results");
-  if (scrollTarget && scrollTarget.scrollIntoView) {
+  if (opts.scroll !== false && scrollTarget && scrollTarget.scrollIntoView) {
     scrollTarget.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 }
@@ -1078,7 +1382,7 @@ function renderMissSave(show) {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "miss-pick" + (missWinner === name ? " on" : "");
-    btn.innerHTML = `<span>${name}</span><span class="em">${state.emotions[name] || ""}</span>`;
+    btn.innerHTML = `<span>${escHtml(conchLabel(name))}</span><span class="em">${state.emotions[name] ? escHtml(emotionLabel(state.emotions[name])) : ""}</span>`;
     btn.addEventListener("click", () => {
       missWinner = name;
       renderMissSave(true);
@@ -1086,7 +1390,10 @@ function renderMissSave(show) {
     picks.appendChild(btn);
   });
   el("missSaveBtn").disabled = !missWinner;
-  el("missHint").textContent = missWinner ? `將記錄「${missWinner}」勝出。` : "請點選贏的螺。";
+  el("missHint").textContent = missWinner
+    ? t("miss.hintWillWin", { name: conchLabel(missWinner) })
+    : t("miss.hintPick");
+  savePickState();
 }
 
 function saveMissRecord() {
@@ -1094,7 +1401,7 @@ function saveMissRecord() {
   if ([...state.selected].some((name) => !state.emotions[name])) return;
   const rec = currentPickRecord(missWinner);
   if (allRecords().some((r) => sameRecord(r, rec))) {
-    el("missHint").textContent = "這筆紀錄已經在資料裡。";
+    el("missHint").textContent = t("miss.alreadyExists");
     return;
   }
   addRecord(rec);
@@ -1103,7 +1410,7 @@ function saveMissRecord() {
 
 function renderList(container, items, input, isExact) {
   if (!items.length) {
-    container.innerHTML = `<div class="empty">${isExact ? "沒有完全符合的紀錄。" : "沒有可比較的紀錄。"}</div>`;
+    container.innerHTML = `<div class="empty">${isExact ? t("results.emptyExact") : t("results.emptyClose")}</div>`;
     return;
   }
   container.innerHTML = items.map((item) => recordCard(item, input)).join("");
@@ -1119,16 +1426,16 @@ function recordCard(item, input) {
     if (input[name] === em) cls += " hit";
     else if (input[name]) cls += " miss";
     if (record.winner === name) cls += " win";
-    return `<span class="${cls}">${name}<span class="em">${em}</span></span>`;
+    return `<span class="${cls}">${escHtml(conchLabel(name))}<span class="em">${escHtml(emotionLabel(em))}</span></span>`;
   }).join("");
 
   return `
     <div class="record">
       <div class="record-top">
-        <span class="record-index">#${index + 1}${isExtra ? ' <span class="added-badge">新增</span>' : ""}</span>
-        <span class="sim-label">相符 ${matched}/${MAX_CONCH}（${pct}%）</span>
+        <span class="record-index">#${index + 1}${isExtra ? ` <span class="added-badge">${t("results.addedBadge")}</span>` : ""}</span>
+        <span class="sim-label">${t("results.matchLabel", { matched, pct })}</span>
         <div class="simbar"><span style="width:${pct}%"></span></div>
-        <span class="winner-badge">赢的螺 ${record.winner || "-"}</span>
+        <span class="winner-badge">${escHtml(t("results.winnerLabel", { name: record.winner ? conchLabel(record.winner) : "-" }))}</span>
       </div>
       <div class="conch-tags">${tags}</div>
     </div>`;
@@ -1146,10 +1453,17 @@ let tableQuery = "";
 
 function rowSearchText(rec) {
   const conch = rec && rec.conch || {};
-  return CONCH_LIST.map((name) => name + (conch[name] || "")).concat(rec && rec.winner || "").join(" ");
+  const parts = [];
+  CONCH_LIST.forEach((name) => {
+    const em = conch[name];
+    if (!em) return;
+    parts.push(conchNameValues(name).join(" "), em, emotionLabel(em), (EMOTION_ALIASES[em] || []).join(" "));
+  });
+  if (rec && rec.winner) parts.push(conchNameValues(rec.winner).join(" "), rec.winner);
+  return parts.join(" ");
 }
 
-function fillSelect(sel, values, current, blankLabel) {
+function fillSelect(sel, values, current, blankLabel, labelFn) {
   if (blankLabel != null) {
     const blank = document.createElement("option");
     blank.value = "";
@@ -1159,7 +1473,7 @@ function fillSelect(sel, values, current, blankLabel) {
   values.forEach((value) => {
     const opt = document.createElement("option");
     opt.value = value;
-    opt.textContent = value;
+    opt.textContent = labelFn ? labelFn(value) : value;
     sel.appendChild(opt);
   });
   sel.value = values.includes(current) ? current : "";
@@ -1204,7 +1518,7 @@ function renderDataTable() {
     if (live) tableEdit.draft = readDraft(live);
   }
   const records = allRecords();
-  const q = tableQuery.trim();
+  const q = tableQuery.trim().toLowerCase();
   body.innerHTML = "";
   let shown = 0;
 
@@ -1215,7 +1529,7 @@ function renderDataTable() {
     if (!isNew && index >= baseRecords.length) tr.classList.add("extra-row");
 
     const num = document.createElement("td");
-    num.textContent = isNew ? "新" : String(index + 1);
+    num.textContent = isNew ? t("records.newRow") : String(index + 1);
     tr.appendChild(num);
 
     const meta = { index, isNew };
@@ -1231,18 +1545,18 @@ function renderDataTable() {
     CONCH_LIST.forEach((name) => {
       const sel = document.createElement("select");
       sel.dataset.conch = name;
-      fillSelect(sel, EMOTIONS, (rec.conch && rec.conch[name]) || "", "—");
+      fillSelect(sel, EMOTIONS, (rec.conch && rec.conch[name]) || "", "—", (value) => emotionLabel(value));
       addCell(sel);
     });
 
     const wsel = document.createElement("select");
     wsel.dataset.field = "winner";
-    fillSelect(wsel, CONCH_LIST, rec.winner || "", "請選擇");
+    fillSelect(wsel, CONCH_LIST, rec.winner || "", t("records.choose"), (value) => conchLabel(value));
     addCell(wsel);
 
     const actions = document.createElement("td");
     actions.className = "row-actions";
-    actions.appendChild(actionBtn("刪除", "record-del", () => {
+    actions.appendChild(actionBtn(t("records.delete"), "record-del", () => {
       if (tr.dataset.index === "new") discardNewRow();
       else deleteTableRow(Number(tr.dataset.index));
     }));
@@ -1252,7 +1566,7 @@ function renderDataTable() {
   };
 
   records.forEach((rec, index) => {
-    if (q && !rowSearchText(rec).includes(q)) return;
+    if (q && !rowSearchText(rec).toLowerCase().includes(q)) return;
     paint(index, rec, false);
   });
   if (tableEdit && tableEdit.isNew) {
@@ -1261,7 +1575,7 @@ function renderDataTable() {
 
   const empty = el("dataEmpty");
   if (empty) {
-    empty.textContent = records.length ? "沒有符合的紀錄。" : "尚未載入紀錄。請開啟 Excel，或新增一列。";
+    empty.textContent = records.length ? t("records.emptyFiltered") : t("records.emptyNone");
     empty.classList.toggle("hidden", shown > 0);
   }
   const shownCount = el("dataShown");
@@ -1274,7 +1588,7 @@ function onTableCellChange(tr, meta, sel) {
   if (meta.isNew) {
     if (tableEdit) tableEdit.draft = rec;
     if (!valid) {
-      setDataHint("請至少填一個心情，並選擇贏的螺。填完後會自動加入。");
+      setDataHint(t("hint.invalidNewRow"));
       return;
     }
     extraRecords.push(rec);
@@ -1290,19 +1604,19 @@ function onTableCellChange(tr, meta, sel) {
     updateCounts();
     const shownCount = el("dataShown");
     if (shownCount && !tableQuery) shownCount.textContent = String(allRecords().length);
-    setDataHint(`已新增第 ${meta.index + 1} 列。下載 Excel 時會寫入。`);
+    setDataHint(t("hint.addedRow", { n: meta.index + 1 }));
     tr.scrollIntoView({ block: "nearest" });
     return;
   }
   if (!valid) {
     sel.value = sel.dataset.prev || "";
-    setDataHint("請至少填一個心情，並選擇贏的螺。");
+    setDataHint(t("hint.invalidRow"));
     return;
   }
   writeRecordAt(meta.index, rec);
   tr.querySelectorAll("select").forEach((node) => { node.dataset.prev = node.value; });
   updateCounts();
-  setDataHint(`已儲存第 ${meta.index + 1} 列。下載 Excel 時會寫入。`);
+  setDataHint(t("hint.savedRow", { n: meta.index + 1 }));
 }
 
 function discardNewRow() {
@@ -1311,9 +1625,9 @@ function discardNewRow() {
   const had = Object.keys(draft.conch).length > 0 || !!draft.winner;
   tableEdit = null;
   renderDataTable();
-  setDataHint("已取消新增。");
+  setDataHint(t("hint.cancelled"));
   if (had) {
-    showUndo("已取消新增。", () => {
+    showUndo(t("hint.cancelled"), () => {
       tableEdit = { isNew: true, draft };
       const filter = el("dataFilter");
       if (filter) filter.value = "";
@@ -1337,16 +1651,17 @@ function actionBtn(label, className, onClick) {
 function deleteTableRow(index) {
   const rec = allRecords()[index];
   if (!rec) return;
-  const label = `第 ${index + 1} 列（贏：${rec.winner}）`;
-  if (!window.confirm(`刪除${label}？`)) return;
+  const rowNo = index + 1;
+  const winnerLabel = rec.winner ? conchLabel(rec.winner) : "-";
+  if (!window.confirm(t("hint.deleteConfirm", { n: rowNo, winner: winnerLabel }))) return;
   const snapshot = JSON.parse(JSON.stringify(rec));
   const wasExtra = index >= baseRecords.length;
   const localIndex = wasExtra ? index - baseRecords.length : index;
   removeRecordAt(index);
   updateCounts();
   renderDataTable();
-  setDataHint(`已刪除${label}。下載 Excel 時不會再寫入。`);
-  showUndo(`已刪除${label}。`, () => {
+  setDataHint(t("hint.deletedRow", { n: rowNo }));
+  showUndo(t("hint.deletedRow", { n: rowNo }), () => {
     if (wasExtra) {
       extraRecords.splice(Math.min(localIndex, extraRecords.length), 0, snapshot);
       saveExtra();
@@ -1359,7 +1674,7 @@ function deleteTableRow(index) {
     const globalIndex = wasExtra ? baseRecords.length + localIndex : localIndex;
     const row = el("dataBody") && el("dataBody").querySelector(`tr[data-index="${globalIndex}"]`);
     if (row) row.scrollIntoView({ block: "nearest" });
-    setDataHint(`已復原${label}。`);
+    setDataHint(t("hint.restoredRow", { n: rowNo }));
   });
 }
 
@@ -1383,6 +1698,8 @@ function beginAddRow() {
 }
 
 function initRecords() {
+  initI18n();
+  applyTableHeaders();
   updateCounts();
   renderDataTable();
   el("addRowBtn").addEventListener("click", beginAddRow);
@@ -1422,7 +1739,7 @@ function showUndo(message, onUndo) {
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "ghost-btn tiny";
-  btn.textContent = "復原";
+  btn.textContent = t("hint.undo");
   btn.addEventListener("click", () => {
     hideUndo();
     onUndo();
@@ -1459,7 +1776,7 @@ function restorePick(snap) {
   updateCounter();
   const hint = el("hint");
   if (hint) {
-    hint.textContent = "已復原選擇。";
+    hint.textContent = t("pick.restored");
     hint.style.color = "";
   }
 }
@@ -1480,11 +1797,87 @@ function reset() {
   updateCounter();
   const hint = el("hint");
   if (hint) {
-    hint.textContent = "已清空選擇。";
+    hint.textContent = t("pick.cleared");
     hint.style.color = "";
   }
-  if (had) showUndo("已清空選擇。", () => restorePick(prev));
+  if (had) showUndo(t("pick.cleared"), () => restorePick(prev));
+}
+
+/* ---------- Name settings page ---------- */
+
+function renderNameSettings() {
+  const body = el("nameBody");
+  if (!body) return;
+  body.innerHTML = "";
+  CONCH_LIST.forEach((canon) => {
+    const names = conchNameSet(canon);
+    const tr = document.createElement("tr");
+    tr.dataset.conch = canon;
+
+    const label = document.createElement("td");
+    label.className = "name-canon";
+    label.dataset.nameLabel = canon;
+    label.textContent = "🐚 " + conchLabel(canon);
+    tr.appendChild(label);
+
+    ["en", "zh-Hant", "zh-Hans"].forEach((code) => {
+      const td = document.createElement("td");
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "name-input";
+      input.dataset.nameLang = code;
+      input.value = names[code] || "";
+      input.setAttribute("aria-label", `${conchLabel(canon)} — ${code}`);
+      input.addEventListener("input", () => {
+        if (code !== "zh-Hant" && code !== "zh-Hans") return;
+        if (code === lang) label.textContent = "🐚 " + (input.value.trim() || canon);
+      });
+      td.appendChild(input);
+      tr.appendChild(td);
+    });
+
+    body.appendChild(tr);
+  });
+}
+
+function saveNameSettings() {
+  const body = el("nameBody");
+  if (!body) return;
+  const config = {};
+  body.querySelectorAll("tr[data-conch]").forEach((tr) => {
+    const canon = tr.dataset.conch;
+    const names = {};
+    tr.querySelectorAll("input[data-name-lang]").forEach((input) => {
+      names[input.dataset.nameLang] = input.value.trim();
+    });
+    config[canon] = names;
+  });
+  conchNamesStored = config;
+  aliasIndexCache = null;
+  try { localStorage.setItem(NAMES_KEY, JSON.stringify(config)); } catch (e) { /* ignore */ }
+  renderNameSettings();
+  const hint = el("namesHint");
+  if (hint) hint.textContent = t("settings.saved");
+}
+
+function resetNameSettings() {
+  conchNamesStored = {};
+  aliasIndexCache = null;
+  try { localStorage.removeItem(NAMES_KEY); } catch (e) { /* ignore */ }
+  renderNameSettings();
+  const hint = el("namesHint");
+  if (hint) hint.textContent = t("settings.resetDone");
+}
+
+function initSettings() {
+  initI18n();
+  renderNameSettings();
+  const save = el("saveNamesBtn");
+  if (save) save.addEventListener("click", saveNameSettings);
+  const reset = el("resetNamesBtn");
+  if (reset) reset.addEventListener("click", resetNameSettings);
 }
 
 if (document.body.dataset.page === "records") initRecords();
+else if (document.body.dataset.page === "settings") initSettings();
 else init();

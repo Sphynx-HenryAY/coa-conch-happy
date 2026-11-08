@@ -21,7 +21,7 @@ html, body {
 }
 
 body {
-  font-family: "Segoe UI", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+  font-family: "Segoe UI", "Noto Sans TC", "Noto Sans SC", "PingFang TC", "PingFang SC", "Microsoft JhengHei", "Microsoft YaHei", system-ui, sans-serif;
   background: radial-gradient(1200px 700px at 80% -10%, #1b2a55 0%, transparent 55%),
               radial-gradient(900px 600px at -10% 20%, #143b3a 0%, transparent 50%),
               var(--bg);
@@ -56,7 +56,7 @@ body {
   filter: drop-shadow(0 6px 14px rgba(109, 139, 255, 0.5));
 }
 
-.site-nav { display: flex; gap: 8px; align-items: center; margin-left: auto; }
+.site-nav { display: flex; gap: 8px; align-items: center; margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
 .site-nav a {
   color: var(--muted);
   text-decoration: none;
@@ -67,6 +67,35 @@ body {
 }
 .site-nav a.on,
 .site-nav a:hover { color: var(--text); border-color: var(--accent); }
+
+.lang-switch {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  background: rgba(12, 18, 36, 0.5);
+}
+
+.lang-btn {
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all .14s ease;
+}
+
+.lang-btn:hover { color: var(--text); }
+
+.lang-btn.on {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #06101f;
+  font-weight: 800;
+}
 
 .topbar h1 { margin: 0; font-size: 26px; letter-spacing: 1px; }
 .topbar p { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
@@ -812,6 +841,46 @@ footer {
   background: #162038;
   box-shadow: -8px 0 10px rgba(0, 0, 0, 0.28);
 }
+
+.settings-panel .panel-sub { max-width: 780px; }
+
+.name-table-wrap {
+  overflow: auto;
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+}
+
+.name-table th:first-child,
+.name-table td:first-child {
+  text-align: left;
+  width: 150px;
+}
+
+.name-canon {
+  color: var(--text);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.name-input {
+  width: 100%;
+  min-width: 140px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+}
+
+.name-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: rgba(109, 139, 255, 0.1);
+}
+
+.settings-panel .actions { margin-top: 16px; }
 
 @media (max-width: 820px) {
   .results-grid { grid-template-columns: 1fr; }

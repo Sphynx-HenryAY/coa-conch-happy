@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>賭螺預測 · 名稱設定</title>
+  <meta name="theme-color" content="#0b1020" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="賭螺預測" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <link rel="stylesheet" href="styles.css?v=11" />
+</head>
+<body class="page-settings" data-page="settings">
+  <div class="bg-glow"></div>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">🐚</span>
+      <div>
+        <h1 data-i18n="header.settingsTitle">名稱設定</h1>
+        <p data-i18n="header.settingsIntro">為每隻螺設定英文、繁中、簡中名稱。上傳截圖時會用全部名稱一起比對。</p>
+      </div>
+    </div>
+    <nav class="site-nav">
+      <a href="index.html" data-i18n="nav.predict">預測</a>
+      <a href="records.html" data-i18n="nav.records">全部紀錄</a>
+      <a href="settings.html" class="on" data-i18n="nav.settings">名稱設定</a>
+      <div class="lang-switch" role="group" data-i18n-aria="lang.label">
+        <button class="lang-btn" type="button" data-lang="zh-Hant" aria-pressed="true">繁</button>
+        <button class="lang-btn" type="button" data-lang="zh-Hans" aria-pressed="false">简</button>
+        <button class="lang-btn" type="button" data-lang="en" aria-pressed="false">EN</button>
+      </div>
+    </nav>
+  </header>
+
+  <main>
+    <section class="panel settings-panel">
+      <div class="panel-head">
+        <h2><span class="step">Aa</span> <span data-i18n="settings.title">螺名稱對照</span></h2>
+        <div class="head-actions">
+          <button id="resetNamesBtn" class="ghost-btn" type="button" data-i18n="settings.reset">還原預設</button>
+          <button id="saveNamesBtn" class="primary-btn tiny" type="button" data-i18n="settings.save">儲存名稱</button>
+        </div>
+      </div>
+      <p class="panel-sub" data-i18n="settings.desc">每隻螺可設定英文、繁中、簡中名稱。上傳截圖時，OCR 會用這三個名稱一併比對。</p>
+      <div class="name-table-wrap">
+        <table class="data-table name-table">
+          <thead>
+            <tr>
+              <th data-i18n="settings.colCanon">螺</th>
+              <th data-i18n="settings.colEn">English</th>
+              <th data-i18n="settings.colHant">繁體中文</th>
+              <th data-i18n="settings.colHans">简体中文</th>
+            </tr>
+          </thead>
+          <tbody id="nameBody"></tbody>
+        </table>
+      </div>
+      <div class="actions">
+        <span id="namesHint" class="hint" data-i18n="settings.note">提示：空白會使用預設名稱。修改後請按「儲存名稱」。</span>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p data-i18n="settings.footer">名稱只儲存在此瀏覽器。下載 Excel 時仍使用固定的繁體中文欄位名稱。</p>
+  </footer>
+
+  <script src="i18n.js?v=11"></script>
+  <script src="app.js?v=11"></script>
+  <script>
+    if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+      addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+    }
+  </script>
+</body>
+</html>
