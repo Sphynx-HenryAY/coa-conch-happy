@@ -545,17 +545,32 @@ function cropRegion(img, b, y0, y1, scale) {
 
 function bestConch(text) {
   const norm = normName(text);
-  let best = null, bestScore = 0;
+  let best = null;
   const perConch = {};
   for (const alias of conchAliasIndex()) {
-    const score = nameScore(norm, alias.norm);
-    if (score > (perConch[alias.canon] || 0)) perConch[alias.canon] = score;
+    const match = {
+      score: nameScore(norm, alias.norm),
+      exact: alias.norm === norm,
+      length: alias.norm.length
+    };
+    if (betterAliasMatch(match, perConch[alias.canon])) perConch[alias.canon] = match;
   }
+  let bestMatch = null;
   for (const canon of CONCH_LIST) {
-    const score = perConch[canon] || 0;
-    if (score > bestScore) { bestScore = score; best = canon; }
+    const match = perConch[canon];
+    if (match && betterAliasMatch(match, bestMatch)) {
+      best = canon;
+      bestMatch = match;
+    }
   }
-  return { name: bestScore >= 0.5 ? best : null, score: bestScore };
+  return { name: bestMatch && bestMatch.score >= 0.5 ? best : null, score: bestMatch ? bestMatch.score : 0 };
+}
+
+function betterAliasMatch(a, b) {
+  if (!b) return true;
+  if (a.score !== b.score) return a.score > b.score;
+  if (a.exact !== b.exact) return a.exact;
+  return a.length > b.length;
 }
 
 function bestEmotion(text) {
