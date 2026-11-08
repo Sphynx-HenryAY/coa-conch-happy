@@ -130,6 +130,7 @@ function nameScore(text, alias) {
   if (!text || !alias) return 0;
   if (text === alias) return 1;
   if (alias.length >= 2 && text.includes(alias)) return 1;
+  if (text.length >= 4 && alias.length > text.length && alias.includes(text)) return 0.85;
   if (/[\u3400-\u9fff]/.test(alias)) {
     const chars = [...alias];
     const hit = chars.filter((ch) => text.includes(ch)).length;

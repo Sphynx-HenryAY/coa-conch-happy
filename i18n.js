@@ -4,14 +4,14 @@ const SUPPORTED_LANGS = ["zh-Hant", "zh-Hans", "en"];
 /* Each conch keeps a canonical key (the Traditional Chinese name used in
    storage and Excel). These are the default OCR aliases per language. */
 const CONCH_DEFAULT_NAMES = {
-  "卡爾": { en: "Karl", "zh-Hant": "卡爾", "zh-Hans": "卡尔" },
-  "逮蝦": { en: "Shrimp", "zh-Hant": "逮蝦", "zh-Hans": "逮虾" },
-  "螺神": { en: "Conch God", "zh-Hant": "螺神", "zh-Hans": "螺神" },
-  "螺寶": { en: "Conch Treasure", "zh-Hant": "螺寶", "zh-Hans": "螺宝" },
+  "卡爾": { en: "Karl, the Fatebringer", "zh-Hant": "卡爾", "zh-Hans": "卡尔" },
+  "逮蝦": { en: "Deja Vu", "zh-Hant": "逮蝦", "zh-Hans": "逮虾" },
+  "螺神": { en: "Crazy Conch", "zh-Hant": "螺神", "zh-Hans": "螺神" },
+  "螺寶": { en: "Conchie", "zh-Hant": "螺寶", "zh-Hans": "螺宝" },
   "啵塞咚": { en: "Poseidon", "zh-Hant": "啵塞咚", "zh-Hans": "啵塞咚" },
   "礦工": { en: "Miner", "zh-Hant": "礦工", "zh-Hans": "矿工" },
-  "爆螺": { en: "Boom Conch", "zh-Hant": "爆螺", "zh-Hans": "爆螺" },
-  "拖拉機": { en: "Tractor", "zh-Hant": "拖拉機", "zh-Hans": "拖拉机" },
+  "爆螺": { en: "Fiery Conch Warrior", "zh-Hant": "爆螺", "zh-Hans": "爆螺" },
+  "拖拉機": { en: "Galloping Tractor", "zh-Hant": "拖拉機", "zh-Hans": "拖拉机" },
   "船長": { en: "Captain", "zh-Hant": "船長", "zh-Hans": "船长" }
 };
 
