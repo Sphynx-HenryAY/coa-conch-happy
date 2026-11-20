@@ -13,12 +13,13 @@ do not deploy anything.
    - Execute as: **Me**
    - Who has access: **Anyone**
 4. Copy the `https://script.google.com/macros/s/…/exec` URL.
-5. Open the app's **名稱設定 / Settings → Google Sheet sync → 首次設定**, expand it,
-   and paste the URL into **服務網址（管理員）**, then press **儲存設定**.
-   (Alternatively put the URL in `SHEET_WEB_APP_URL` at the top of `app.js`.)
+5. The URL is already set in `SHEET_WEB_APP_URL` at the top of `app.js`, so
+   users do not need to configure anything. To use a different deployment,
+   either change that constant or paste the URL into **名稱設定 / Settings →
+   Google Sheet sync → 首次設定 → 服務網址（管理員）** and press **儲存設定**.
 
 If `apps-script.gs` is edited later, redeploy: **Manage deployments → edit →
-Version: New version**. The URL stays the same.
+Version: New version**. The URL stays the same, so no app change is needed.
 
 ## For each user
 
