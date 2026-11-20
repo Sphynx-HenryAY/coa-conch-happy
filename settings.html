@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png" />
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
-  <link rel="stylesheet" href="styles.css?v=14" />
+  <link rel="stylesheet" href="styles.css?v=16" />
 </head>
 <body class="page-settings" data-page="settings">
   <div class="bg-glow"></div>
@@ -77,14 +77,57 @@
         <span id="moodHint" class="hint" data-i18n="settings.moodHint">學習資料只存在此瀏覽器，每種心情最多保留 10 個圖示。</span>
       </div>
     </section>
+
+    <section id="sheet" class="panel settings-panel">
+      <div class="panel-head">
+        <h2><span class="step">▦</span> <span data-i18n="sheet.panelTitle">Google Sheet 同步</span></h2>
+        <div class="head-actions">
+          <button id="saveSheetBtn" class="primary-btn tiny" type="button" data-i18n="sheet.saveConfig">儲存設定</button>
+          <button id="testSheetBtn" class="ghost-btn" type="button" data-i18n="sheet.test">測試連線</button>
+        </div>
+      </div>
+      <p class="panel-sub" data-i18n="sheet.panelDesc">貼上 Google Sheet 分享連結，按「儲存設定」就會自動讀取，之後可在全部紀錄頁寫回試算表。</p>
+      <div class="sheet-form">
+        <label class="sheet-field">
+          <span data-i18n="sheet.urlLabel">Google Sheet 連結</span>
+          <input id="sheetUrl" class="sheet-input" type="url" autocomplete="off" spellcheck="false"
+            placeholder="https://docs.google.com/spreadsheets/d/…/edit" data-i18n-placeholder="sheet.urlPlaceholder" />
+          <small data-i18n="sheet.shareNote">試算表需設為「共用 → 知道連結的任何人 → 編輯者」。</small>
+        </label>
+      </div>
+      <p id="sheetStatus" class="hint sheet-status"></p>
+      <details class="sheet-setup">
+        <summary data-i18n="sheet.setupTitle">首次設定（只需一次）</summary>
+        <p data-i18n-html="sheet.setupHtml">1. 在 Google Sheet 按「共用」，選「知道連結的任何人」並設為「編輯者」。<br>2. 複製網址貼到上面，按「儲存設定」就會自動載入。<br>3. 網站管理員只需部署一次 Apps Script，網址填在下方進階設定。</p>
+        <div class="sheet-form">
+          <label class="sheet-field">
+            <span data-i18n="sheet.serviceLabel">服務網址（管理員）</span>
+            <input id="sheetServiceUrl" class="sheet-input" type="url" autocomplete="off" spellcheck="false"
+              placeholder="https://script.google.com/macros/s/…/exec" data-i18n-placeholder="sheet.servicePlaceholder" />
+            <small data-i18n="sheet.serviceNote">部署 apps-script.gs 為網頁應用程式（執行身分：我；存取權：任何人）後，貼上 /exec 網址。</small>
+          </label>
+          <label class="sheet-field">
+            <span data-i18n="sheet.tokenLabel">存取密碼（選填）</span>
+            <input id="sheetToken" class="sheet-input" type="password" autocomplete="off"
+              placeholder="與 Apps Script 內的 TOKEN 相同" data-i18n-placeholder="sheet.tokenPlaceholder" />
+            <small data-i18n="sheet.tokenNote">若 Apps Script 有設定 TOKEN，請填入相同字串；留空則不驗證。</small>
+          </label>
+        </div>
+        <div class="actions">
+          <button id="copySheetBtn" class="ghost-btn" type="button" data-i18n="sheet.copyCode">複製 Apps Script 程式碼</button>
+          <span id="sheetCopyHint" class="hint"></span>
+        </div>
+        <p><a class="sheet-code-link" href="apps-script.gs" target="_blank" rel="noopener">apps-script.gs</a></p>
+      </details>
+    </section>
   </main>
 
   <footer>
     <p data-i18n="settings.footer">名稱只儲存在此瀏覽器。下載 Excel 時仍使用固定的繁體中文欄位名稱。</p>
   </footer>
 
-  <script src="i18n.js?v=14"></script>
-  <script src="app.js?v=14"></script>
+  <script src="i18n.js?v=16"></script>
+  <script src="app.js?v=16"></script>
   <script>
     if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
       addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));

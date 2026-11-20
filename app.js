@@ -11,6 +11,12 @@ const LANG_KEY = "conchLang_v1";
 const NAMES_KEY = "conchNames_v1";
 const PICK_KEY = "conchPick_v1";
 const MOOD_ICONS_KEY = "conchMoodIcons_v1";
+const SHEET_URL_KEY = "conchSheetUrl_v1";
+const SHEET_TOKEN_KEY = "conchSheetToken_v1";
+const SHEET_SERVICE_KEY = "conchSheetServiceUrl_v1";
+// Deploy apps-script.gs once as a Web App. Paste its /exec URL here, or in
+// Settings → Google Sheet sync → 首次設定 → 服務網址.
+const SHEET_WEB_APP_URL = "";
 const MOOD_SIG = 14;
 const MOOD_MATCH_MIN = 0.9;
 const MOOD_MATCH_MARGIN = 0.04;
@@ -393,6 +399,7 @@ function init() {
   if (unsavedDl) unsavedDl.addEventListener("click", downloadExcel);
   setupShot();
   setupManage();
+  setupSheetButtons();
   noteDataset();
 }
 
@@ -1200,16 +1207,8 @@ function normCell(v) {
   return String(v == null ? "" : v).replace(/\u00a0/g, " ").trim();
 }
 
-function parseWorkbook(data) {
-  if (typeof XLSX === "undefined") throw new Error(t("hint.xlsxMissing"));
-  let bytes = data;
-  let type = "array";
-  if (data instanceof ArrayBuffer) bytes = new Uint8Array(data);
-  else if (typeof Buffer !== "undefined" && Buffer.isBuffer && Buffer.isBuffer(data)) type = "buffer";
-  const wb = XLSX.read(bytes, { type });
-  const sheetName = wb.SheetNames[0];
-  if (!sheetName) throw new Error(t("hint.sheetMissing"));
-  const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, raw: false, defval: "" });
+function parseRows(rows) {
+  rows = Array.isArray(rows) ? rows : [];
 
   const isWinHeader = (cell) => {
     const norm = normName(cell);
@@ -1261,6 +1260,19 @@ function parseWorkbook(data) {
     else skipped++;
   }
   return { records, skipped, normalized };
+}
+
+function parseWorkbook(data) {
+  if (typeof XLSX === "undefined") throw new Error(t("hint.xlsxMissing"));
+  let bytes = data;
+  let type = "array";
+  if (data instanceof ArrayBuffer) bytes = new Uint8Array(data);
+  else if (typeof Buffer !== "undefined" && Buffer.isBuffer && Buffer.isBuffer(data)) type = "buffer";
+  const wb = XLSX.read(bytes, { type });
+  const sheetName = wb.SheetNames[0];
+  if (!sheetName) throw new Error(t("hint.sheetMissing"));
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, raw: false, defval: "" });
+  return parseRows(rows);
 }
 
 function applyLoadedRecords(parsed, filename) {
@@ -1324,13 +1336,18 @@ function setupExcelDrop() {
   });
 }
 
-function workbookFromRecords(records) {
+function recordsToAoa(records) {
   const aoa = [EXCEL_HEADER.slice()];
   records.forEach((r) => {
     const row = CONCH_LIST.map((c) => (r.conch && r.conch[c]) || "");
     row.push(r.winner || "");
     aoa.push(row);
   });
+  return aoa;
+}
+
+function workbookFromRecords(records) {
+  const aoa = recordsToAoa(records);
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   ws["!cols"] = EXCEL_HEADER.map((h) => ({ wch: Math.max(8, h.length * 2 + 2) }));
   const wb = XLSX.utils.book_new();
@@ -1368,6 +1385,330 @@ function downloadExcel() {
   setDataHint(folded
     ? t("hint.downloadedFolded", { name, n: records.length, folded })
     : t("hint.downloaded", { name, n: records.length }));
+}
+
+/* ---------- Google Sheet sync (Apps Script Web App) ---------- */
+
+let sheetBusy = false;
+
+function getSheetUrl() {
+  try { return (localStorage.getItem(SHEET_URL_KEY) || "").trim(); } catch (e) { return ""; }
+}
+
+function getSheetToken() {
+  try { return (localStorage.getItem(SHEET_TOKEN_KEY) || "").trim(); } catch (e) { return ""; }
+}
+
+function getSheetServiceUrl() {
+  try {
+    const saved = (localStorage.getItem(SHEET_SERVICE_KEY) || "").trim();
+    return saved || SHEET_WEB_APP_URL || "";
+  } catch (e) { return SHEET_WEB_APP_URL || ""; }
+}
+
+function saveSheetConfig(url, token, serviceUrl) {
+  try {
+    if (url) localStorage.setItem(SHEET_URL_KEY, url);
+    else localStorage.removeItem(SHEET_URL_KEY);
+    if (token) localStorage.setItem(SHEET_TOKEN_KEY, token);
+    else localStorage.removeItem(SHEET_TOKEN_KEY);
+    if (typeof serviceUrl === "string") {
+      if (serviceUrl) localStorage.setItem(SHEET_SERVICE_KEY, serviceUrl);
+      else localStorage.removeItem(SHEET_SERVICE_KEY);
+    }
+  } catch (e) { /* ignore */ }
+}
+
+function extractSheetId(value) {
+  const s = String(value == null ? "" : value).trim();
+  if (!s) return "";
+  if (/^[A-Za-z0-9_-]{10,}$/.test(s)) return s;
+  let match = s.match(/docs\.google\.com\/spreadsheets\/d\/([A-Za-z0-9_-]{10,})/i);
+  if (!match) match = s.match(/\/spreadsheets\/d\/([A-Za-z0-9_-]{10,})/i);
+  if (!match) match = s.match(/[?&#]id=([A-Za-z0-9_-]{10,})/i);
+  return match ? match[1] : "";
+}
+
+function setSheetStatus(text, isError) {
+  const node = el("sheetStatus");
+  if (node) {
+    node.textContent = text || "";
+    node.classList.toggle("err", !!isError);
+    node.classList.toggle("hidden", !text);
+  }
+  return text;
+}
+
+function showSheetState() {
+  const url = getSheetUrl();
+  if (!url) {
+    setSheetStatus(t("sheet.statusNotConfigured"), false);
+  } else if (!extractSheetId(url)) {
+    setSheetStatus(t("sheet.badUrl"), true);
+  } else if (!getSheetServiceUrl()) {
+    setSheetStatus(t("sheet.noService"), true);
+  } else {
+    setSheetStatus(t("sheet.statusReady"), false);
+  }
+}
+
+function sheetLabel(data) {
+  const name = (data && data.sheetName) || "";
+  const base = t("sheet.defaultName");
+  if (!name) return base;
+  return name === base ? base : `${base} · ${name}`;
+}
+
+async function sheetCall(action, payload) {
+  const serviceUrl = getSheetServiceUrl();
+  if (!serviceUrl) throw new Error(t("sheet.noService"));
+  const spreadsheetId = extractSheetId(getSheetUrl());
+  if (!spreadsheetId) throw new Error(t("sheet.noUrl"));
+  const token = getSheetToken();
+  const opts = { cache: "no-store", redirect: "follow" };
+  let target = serviceUrl;
+  if (payload) {
+    opts.method = "POST";
+    // text/plain keeps the request "simple" so Apps Script does not need a CORS preflight.
+    opts.headers = { "Content-Type": "text/plain;charset=utf-8" };
+    opts.body = JSON.stringify({ action, token, spreadsheetId, ...payload });
+  } else {
+    let parsed;
+    try { parsed = new URL(serviceUrl); }
+    catch (e) { throw new Error(t("sheet.noService")); }
+    parsed.searchParams.set("action", action);
+    parsed.searchParams.set("spreadsheetId", spreadsheetId);
+    if (token) parsed.searchParams.set("token", token);
+    target = parsed.toString();
+    opts.method = "GET";
+  }
+  const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+  if (ctrl) opts.signal = ctrl.signal;
+  const timer = setTimeout(() => { if (ctrl) ctrl.abort(); }, 30000);
+  let res;
+  try {
+    res = await fetch(target, opts);
+  } catch (e) {
+    throw new Error(e && e.name === "AbortError" ? t("sheet.timeout") : t("sheet.networkFail"));
+  } finally {
+    clearTimeout(timer);
+  }
+  let data;
+  try { data = await res.json(); }
+  catch (e) { throw new Error(t("sheet.badJson", { status: res.status })); }
+  if (!data || data.ok !== true) {
+    throw new Error((data && data.error) || t("sheet.badJson", { status: res.status }));
+  }
+  return data;
+}
+
+async function loadFromSheet() {
+  if (sheetBusy) return false;
+  if (!getSheetUrl()) {
+    const msg = t("sheet.noUrl");
+    setSheetStatus(msg, true);
+    setDataHint(msg);
+    return false;
+  }
+  sheetBusy = true;
+  setSheetStatus(t("sheet.statusLoading"));
+  setDataHint(t("sheet.statusLoading"));
+  try {
+    const data = await sheetCall("load");
+    const parsed = parseRows(data.values);
+    if (!parsed.records.length) {
+      setSheetStatus(t("sheet.empty"), true);
+      setDataHint(t("sheet.empty"));
+      return false;
+    }
+    const sheetName = data.sheetName || t("sheet.defaultName");
+    applyLoadedRecords(parsed, sheetLabel(data));
+    const msg = t("sheet.statusLoaded", { n: parsed.records.length, sheet: sheetName });
+    setSheetStatus(msg);
+    setDataHint(msg + (parsed.skipped ? t("hint.sheetSkipped", { n: parsed.skipped }) : ""));
+    return true;
+  } catch (err) {
+    const msg = t("sheet.statusFail", { msg: err && err.message ? err.message : err });
+    setSheetStatus(msg, true);
+    setDataHint(msg);
+    return false;
+  } finally {
+    sheetBusy = false;
+  }
+}
+
+async function saveToSheet(opts = {}) {
+  if (sheetBusy) return false;
+  if (!getSheetUrl()) {
+    const msg = t("sheet.noUrl");
+    setSheetStatus(msg, true);
+    setDataHint(msg);
+    return false;
+  }
+  const records = allRecords();
+  if (!records.length) {
+    const msg = t("sheet.noRecords");
+    setSheetStatus(msg, true);
+    setDataHint(msg);
+    return false;
+  }
+  if (!opts.confirmed && !window.confirm(t("sheet.replaceConfirm", { n: records.length }))) return false;
+  sheetBusy = true;
+  setSheetStatus(t("sheet.statusSaving"));
+  setDataHint(t("sheet.statusSaving"));
+  try {
+    const data = await sheetCall("save", { rows: recordsToAoa(records) });
+    baseRecords = records;
+    extraRecords = [];
+    baseName = sheetLabel(data) || baseName || t("sheet.defaultName");
+    saveBase();
+    saveExtra();
+    updateCounts();
+    if (el("dataBody")) renderDataTable();
+    refreshResults();
+    const msg = t("sheet.statusSaved", {
+      n: data.count != null ? data.count : records.length,
+      sheet: data.sheetName || t("sheet.defaultName")
+    });
+    setSheetStatus(msg);
+    setDataHint(msg);
+    return true;
+  } catch (err) {
+    const msg = t("sheet.statusFail", { msg: err && err.message ? err.message : err });
+    setSheetStatus(msg, true);
+    setDataHint(msg);
+    return false;
+  } finally {
+    sheetBusy = false;
+  }
+}
+
+async function testSheetConnection() {
+  if (sheetBusy) return false;
+  if (!getSheetUrl()) {
+    const msg = t("sheet.noUrl");
+    setSheetStatus(msg, true);
+    return false;
+  }
+  sheetBusy = true;
+  setSheetStatus(t("sheet.statusTesting"));
+  try {
+    const data = await sheetCall("ping");
+    const sheetName = data.sheetName || t("sheet.defaultName");
+    setSheetStatus(t("sheet.statusTest", { sheet: sheetName }));
+    return true;
+  } catch (err) {
+    setSheetStatus(t("sheet.statusFail", { msg: err && err.message ? err.message : err }), true);
+    return false;
+  } finally {
+    sheetBusy = false;
+  }
+}
+
+function readSheetForm() {
+  const urlInput = el("sheetUrl");
+  const tokenInput = el("sheetToken");
+  const serviceInput = el("sheetServiceUrl");
+  return {
+    url: urlInput ? urlInput.value.trim() : getSheetUrl(),
+    token: tokenInput ? tokenInput.value.trim() : getSheetToken(),
+    serviceUrl: serviceInput ? serviceInput.value.trim() : getSheetServiceUrl()
+  };
+}
+
+async function copySheetScript() {
+  const hint = el("sheetCopyHint");
+  let text = "";
+  try {
+    const res = await fetch("apps-script.gs", { cache: "no-store" });
+    if (!res.ok) throw new Error(String(res.status));
+    text = await res.text();
+  } catch (e) {
+    if (hint) hint.textContent = t("sheet.copyFail");
+    return;
+  }
+  let copied = false;
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      copied = true;
+    }
+  } catch (e) { /* fall through */ }
+  if (!copied) {
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.appendChild(area);
+    area.select();
+    try { copied = document.execCommand("copy"); } catch (e) { copied = false; }
+    document.body.removeChild(area);
+  }
+  if (hint) hint.textContent = copied ? t("sheet.copied") : t("sheet.copyFail");
+}
+
+function initSheetSettings() {
+  const urlInput = el("sheetUrl");
+  const tokenInput = el("sheetToken");
+  const serviceInput = el("sheetServiceUrl");
+  if (urlInput) urlInput.value = getSheetUrl();
+  if (tokenInput) tokenInput.value = getSheetToken();
+  if (serviceInput) serviceInput.value = getSheetServiceUrl();
+  showSheetState();
+
+  function applySheetForm() {
+    const form = readSheetForm();
+    if (form.url && !extractSheetId(form.url)) {
+      setSheetStatus(t("sheet.badUrl"), true);
+      return null;
+    }
+    saveSheetConfig(form.url, form.token, form.serviceUrl);
+    return form;
+  }
+
+  const save = el("saveSheetBtn");
+  if (save) {
+    save.addEventListener("click", () => {
+      const form = applySheetForm();
+      if (!form) return;
+      if (!form.url) {
+        setSheetStatus(t("sheet.statusNotConfigured"), false);
+        return;
+      }
+      setSheetStatus(t("sheet.statusConfigSaved"), false);
+      loadFromSheet();
+    });
+  }
+  const test = el("testSheetBtn");
+  if (test) {
+    test.addEventListener("click", () => {
+      const form = applySheetForm();
+      if (!form) return;
+      testSheetConnection();
+    });
+  }
+  const copy = el("copySheetBtn");
+  if (copy) copy.addEventListener("click", copySheetScript);
+
+  [urlInput, tokenInput, serviceInput].forEach((input) => {
+    if (!input) return;
+    input.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      const saveBtn = el("saveSheetBtn");
+      if (saveBtn) saveBtn.click();
+    });
+  });
+}
+
+function setupSheetButtons() {
+  const load = el("sheetLoadBtn");
+  if (load) load.addEventListener("click", loadFromSheet);
+  const save = el("sheetSaveBtn");
+  if (save) save.addEventListener("click", () => saveToSheet());
+  const indexSave = el("unsavedSheetBtn");
+  if (indexSave) indexSave.addEventListener("click", () => saveToSheet());
+  if (el("sheetStatus")) showSheetState();
 }
 
 function noteDataset() {
@@ -1954,6 +2295,7 @@ function initRecords() {
     renderDataTable();
   });
   setupExcelDrop();
+  setupSheetButtons();
   noteDataset();
 }
 
@@ -2126,6 +2468,7 @@ function initSettings() {
   if (reset) reset.addEventListener("click", resetNameSettings);
   const resetMood = el("resetMoodBtn");
   if (resetMood) resetMood.addEventListener("click", resetMoodIcons);
+  initSheetSettings();
 }
 
 if (document.body.dataset.page === "records") initRecords();

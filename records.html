@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png" />
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
-  <link rel="stylesheet" href="styles.css?v=14" />
+  <link rel="stylesheet" href="styles.css?v=16" />
 </head>
 <body class="page-records" data-page="records">
   <div class="bg-glow"></div>
@@ -43,11 +43,15 @@
         <button id="addRowBtn" class="primary-btn tiny" type="button" data-i18n="records.addRow">新增一列</button>
         <label class="ghost-btn file-label"><span data-i18n="records.openExcel">開啟 Excel</span><input id="excelFile" type="file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" hidden /></label>
         <button id="saveExcelBtn" class="ghost-btn" type="button" data-i18n="records.download">下載 Excel</button>
-        <span id="unsavedPill" class="pill unsaved-pill hidden" data-unsaved><span data-unsaved-text>尚有 0 筆未寫入 Excel</span></span>
+        <button id="sheetLoadBtn" class="ghost-btn" type="button" data-i18n="sheet.load">從 Sheet 讀取</button>
+        <button id="sheetSaveBtn" class="ghost-btn" type="button" data-i18n="sheet.saveToSheet">寫回 Sheet</button>
+        <a class="ghost-btn" href="settings.html#sheet" data-i18n="sheet.settingsLink">Google Sheet 設定</a>
+        <span id="unsavedPill" class="pill unsaved-pill hidden" data-unsaved><span data-unsaved-text>尚有 0 筆未寫出（Excel / Google Sheet）</span></span>
         <label class="check-label"><input id="clearExtrasOnOpen" type="checkbox" /> <span data-i18n="records.clearExtras">開啟時清除瀏覽器新增</span></label>
         <input id="dataFilter" class="data-filter" type="search" data-i18n-placeholder="records.search" placeholder="搜尋螺、心情或贏家" />
         <span id="fileName" class="pill">尚未載入</span>
         <span class="pill"><span data-i18n="records.showing">顯示</span> <span id="dataShown">0</span></span>
+        <span id="sheetStatus" class="sheet-status hint"></span>
       </div>
       <div class="data-table-wrap">
         <table class="data-table">
@@ -80,8 +84,8 @@
   </footer>
 
   <script src="vendor/xlsx/xlsx.full.min.js"></script>
-  <script src="i18n.js?v=14"></script>
-  <script src="app.js?v=14"></script>
+  <script src="i18n.js?v=16"></script>
+  <script src="app.js?v=16"></script>
   <script>
     if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
       addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));

@@ -884,6 +884,69 @@ footer {
 
 .settings-panel .actions { margin-top: 16px; }
 
+.sheet-form {
+  display: grid;
+  gap: 14px;
+  max-width: 760px;
+}
+
+.sheet-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sheet-field > span {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.sheet-field small { color: var(--muted); font-size: 12px; }
+
+.sheet-input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+  background: rgba(6, 10, 22, 0.7);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+}
+
+.sheet-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: rgba(109, 139, 255, 0.1);
+}
+
+.sheet-status { margin-top: 10px; }
+
+.sheet-status.err { color: #ff9b9b; }
+
+.data-tools .sheet-status { flex-basis: 100%; margin-top: 0; }
+
+a.ghost-btn { text-decoration: none; display: inline-flex; align-items: center; }
+
+.sheet-status:empty { display: none; }
+
+.sheet-setup {
+  margin-top: 16px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.sheet-setup summary {
+  cursor: pointer;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.sheet-setup p { margin: 10px 0 0; line-height: 1.8; }
+
+.sheet-code-link { color: var(--accent); }
+
 @media (max-width: 820px) {
   .results-grid { grid-template-columns: 1fr; }
   .record-list { max-height: 340px; }
