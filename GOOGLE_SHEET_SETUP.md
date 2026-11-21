@@ -13,6 +13,12 @@ do not deploy anything.
    - Execute as: **Me**
    - Who has access: **Anyone**
 4. Copy the `https://script.google.com/macros/s/…/exec` URL.
+
+Current shared deployment:
+
+- Deployment ID: `AKfycbxcWUvXPI6VgkuGzEqcAiYDMwD8S_H---y-qKtynEdHSTVPT3POXIHa9TmktJxBfhvz`
+- Web App URL: `https://script.google.com/macros/s/AKfycbxcWUvXPI6VgkuGzEqcAiYDMwD8S_H---y-qKtynEdHSTVPT3POXIHa9TmktJxBfhvz/exec`
+
 5. The URL is already set in `SHEET_WEB_APP_URL` at the top of `app.js`, so
    users do not need to configure anything. To use a different deployment,
    either change that constant or paste the URL into **名稱設定 / Settings →

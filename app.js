@@ -16,7 +16,8 @@ const SHEET_TOKEN_KEY = "conchSheetToken_v1";
 const SHEET_SERVICE_KEY = "conchSheetServiceUrl_v1";
 // Deployed once from apps-script.gs (execute as Me, access Anyone).
 // Users only need to paste their Google Sheet link; this URL is preconfigured.
-const SHEET_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyaP9U6ywOv26W6caa49pIfmbzsp4zpStx1s1W0zfyrUqb1RcGBS5-R4wb6GZKi-gf-/exec";
+// Apps Script deployment ID: AKfycbxcWUvXPI6VgkuGzEqcAiYDMwD8S_H---y-qKtynEdHSTVPT3POXIHa9TmktJxBfhvz
+const SHEET_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxcWUvXPI6VgkuGzEqcAiYDMwD8S_H---y-qKtynEdHSTVPT3POXIHa9TmktJxBfhvz/exec";
 const MOOD_SIG = 14;
 const MOOD_MATCH_MIN = 0.9;
 const MOOD_MATCH_MARGIN = 0.04;
