@@ -1,5 +1,5 @@
 /* Service worker for 賭螺預測器 PWA. Bump VERSION on release. */
-const VERSION = "v13";
+const VERSION = "v14";
 const SHELL_CACHE = `conch-shell-${VERSION}`;
 const RUNTIME_CACHE = `conch-runtime-${VERSION}`;
 const RUNTIME_LIMIT = 60;
@@ -11,9 +11,9 @@ const SHELL_ASSETS = [
   "./index.html",
   "./records.html",
   "./settings.html",
-  "./styles.css?v=19",
-  "./i18n.js?v=19",
-  "./app.js?v=19",
+  "./styles.css?v=20",
+  "./i18n.js?v=20",
+  "./app.js?v=20",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png",

@@ -16,7 +16,7 @@ const SHEET_URL_KEY = "conchSheetUrl_v1";
 const SHEET_TOKEN_KEY = "conchSheetToken_v1";
 const SHEET_SERVICE_KEY = "conchSheetServiceUrl_v1";
 const SCAN_AREA_KEY = "conchScanArea_v1";
-const SCAN_AREAS = ["auto", "full", "left", "right", "top", "bottom"];
+const SCAN_AREAS = ["auto", "full", "left", "right", "top", "bottom", "custom"];
 // Deployed once from apps-script.gs (execute as Me, access Anyone).
 // Users only need to paste their Google Sheet link; this URL is preconfigured.
 // Apps Script deployment ID: AKfycbxcWUvXPI6VgkuGzEqcAiYDMwD8S_H---y-qKtynEdHSTVPT3POXIHa9TmktJxBfhvz
@@ -64,6 +64,7 @@ function loadScanArea() {
 let scanArea = loadScanArea();
 let lastShotFile = null;
 let lastShotUrl = null;
+let customRect = null;
 
 function t(key, vars) {
   const table = I18N[lang] || I18N["zh-Hant"];
@@ -171,6 +172,84 @@ function nameScore(text, alias) {
   return ratio >= 0.7 ? Math.min(0.95, ratio) : 0;
 }
 
+function loadLearnedConchAliases() {
+  const out = {};
+  CONCH_LIST.forEach((canon) => { out[canon] = []; });
+  try {
+    const raw = localStorage.getItem(NAME_LEARN_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return out;
+    CONCH_LIST.forEach((canon) => {
+      const list = Array.isArray(parsed[canon]) ? parsed[canon] : [];
+      const seen = new Set();
+      out[canon] = list
+        .map((value) => normName(value))
+        .filter((norm) => {
+          if (!norm || norm.length < NAME_LEARN_MIN_LEN) return false;
+          if (seen.has(norm)) return false;
+          seen.add(norm);
+          return true;
+        })
+        .slice(-NAME_LEARN_MAX);
+    });
+  } catch (e) { /* ignore */ }
+  return out;
+}
+
+let learnedConchAliases = loadLearnedConchAliases();
+let namePending = {};
+let namePendingPool = [];
+
+function saveLearnedConchAliases() {
+  try { localStorage.setItem(NAME_LEARN_KEY, JSON.stringify(learnedConchAliases)); } catch (e) { /* ignore */ }
+}
+
+function isStrongNameAlias(norm, canon) {
+  if (!norm) return false;
+  for (const name of conchNameValues(canon)) {
+    if (normName(name) === norm) return true;
+  }
+  return (learnedConchAliases[canon] || []).includes(norm);
+}
+
+function learnConchName(canon, rawText) {
+  if (!CONCH_LIST.includes(canon)) return false;
+  const norm = normName(rawText);
+  if (!norm || norm.length < NAME_LEARN_MIN_LEN) return false;
+  if (isStrongNameAlias(norm, canon)) return false;
+
+  for (const other of CONCH_LIST) {
+    if (other === canon) continue;
+    for (const name of conchNameValues(other)) {
+      if (normName(name) === norm) return false;
+    }
+  }
+
+  let changed = false;
+  CONCH_LIST.forEach((other) => {
+    if (other === canon) return;
+    const existing = learnedConchAliases[other] || [];
+    const kept = existing.filter((alias) => alias !== norm);
+    if (kept.length !== existing.length) {
+      learnedConchAliases[other] = kept;
+      changed = true;
+    }
+  });
+
+  const list = learnedConchAliases[canon] || (learnedConchAliases[canon] = []);
+  if (!list.includes(norm)) {
+    list.push(norm);
+    if (list.length > NAME_LEARN_MAX) list.splice(0, list.length - NAME_LEARN_MAX);
+    changed = true;
+  }
+
+  if (changed) {
+    aliasIndexCache = null;
+    saveLearnedConchAliases();
+  }
+  return changed;
+}
+
 function conchAliasIndex() {
   if (aliasIndexCache) return aliasIndexCache;
   const list = [];
@@ -178,6 +257,9 @@ function conchAliasIndex() {
     conchNameValues(canon).forEach((name) => {
       const norm = normName(name);
       if (norm) list.push({ canon, norm, raw: name });
+    });
+    (learnedConchAliases[canon] || []).forEach((norm) => {
+      if (norm) list.push({ canon, norm, raw: norm });
     });
   });
   list.sort((a, b) => b.norm.length - a.norm.length);
@@ -437,7 +519,9 @@ function setupShot() {
       const next = btn.dataset.scan;
       if (!SCAN_AREAS.includes(next)) return;
       setScanArea(next);
-      if (lastShotFile && !ocrBusy) handleImageFile(lastShotFile);
+      if (!lastShotFile || ocrBusy) return;
+      if (next === "custom" && !customRect) setOcrStatus(t("ocr.chooseArea"), 1);
+      else handleImageFile(lastShotFile);
     });
   });
   updateScanButtons();
@@ -469,6 +553,7 @@ function setupShot() {
       }
     }
   });
+  setupCropSelection();
 }
 
 function setScanArea(area) {
@@ -484,14 +569,91 @@ function updateScanButtons() {
     btn.classList.toggle("on", on);
     btn.setAttribute("aria-pressed", on ? "true" : "false");
   });
+  const wrap = el("shotPreviewWrap");
+  if (wrap) wrap.classList.toggle("custom-mode", scanArea === "custom");
 }
 
 function scanAreaLabel(area) {
   const keys = {
     auto: "shot.scanAuto", full: "shot.scanFull", left: "shot.scanLeft",
-    right: "shot.scanRight", top: "shot.scanTop", bottom: "shot.scanBottom"
+    right: "shot.scanRight", top: "shot.scanTop", bottom: "shot.scanBottom",
+    custom: "shot.scanCustom"
   };
   return t(keys[area] || "shot.scanAuto");
+}
+
+function cropBox() {
+  let box = el("shotCrop");
+  if (!box) {
+    box = document.createElement("div");
+    box.id = "shotCrop";
+    box.className = "shot-crop hidden";
+    el("shotPreviewWrap").appendChild(box);
+  }
+  return box;
+}
+
+function showCropBox(rect) {
+  const img = el("shotPreview");
+  const W = img.naturalWidth || 1, H = img.naturalHeight || 1;
+  const box = cropBox();
+  box.style.left = `${(rect.x / W) * 100}%`;
+  box.style.top = `${(rect.y / H) * 100}%`;
+  box.style.width = `${(rect.w / W) * 100}%`;
+  box.style.height = `${(rect.h / H) * 100}%`;
+  box.classList.remove("hidden");
+}
+
+function setupCropSelection() {
+  const wrap = el("shotPreviewWrap");
+  const img = el("shotPreview");
+  let start = null;
+
+  const point = (e) => {
+    const r = img.getBoundingClientRect();
+    return {
+      x: Math.max(0, Math.min(r.width, e.clientX - r.left)),
+      y: Math.max(0, Math.min(r.height, e.clientY - r.top)),
+      rw: r.width || 1,
+      rh: r.height || 1
+    };
+  };
+  const toImageRect = (a, b) => {
+    const left = Math.min(a.x, b.x), top = Math.min(a.y, b.y);
+    return {
+      x: (left / a.rw) * img.naturalWidth,
+      y: (top / a.rh) * img.naturalHeight,
+      w: (Math.abs(b.x - a.x) / a.rw) * img.naturalWidth,
+      h: (Math.abs(b.y - a.y) / a.rh) * img.naturalHeight
+    };
+  };
+
+  wrap.addEventListener("pointerdown", (e) => {
+    if (scanArea !== "custom" || !img.naturalWidth) return;
+    e.preventDefault();
+    start = point(e);
+    showCropBox(toImageRect(start, start));
+    try { wrap.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+  });
+  wrap.addEventListener("pointermove", (e) => {
+    if (!start) return;
+    showCropBox(toImageRect(start, point(e)));
+  });
+  const finish = (e) => {
+    if (!start) return;
+    const rect = toImageRect(start, point(e));
+    start = null;
+    if (rect.w < 20 || rect.h < 20) {
+      cropBox().classList.add("hidden");
+      setOcrStatus(t("ocr.chooseArea"), 1);
+      return;
+    }
+    customRect = rect;
+    showCropBox(rect);
+    if (lastShotFile && !ocrBusy) handleImageFile(lastShotFile);
+  };
+  wrap.addEventListener("pointerup", finish);
+  wrap.addEventListener("pointercancel", () => { start = null; });
 }
 
 function setOcrStatus(text, pct) {
@@ -550,6 +712,7 @@ function loadOpenCV() {
 }
 
 function areaRect(key, W, H) {
+  if (key === "custom") return customRect || { x: 0, y: 0, w: W, h: H };
   if (key === "left") return { x: 0, y: 0, w: W / 2, h: H };
   if (key === "right") return { x: W / 2, y: 0, w: W / 2, h: H };
   if (key === "top") return { x: 0, y: 0, w: W, h: H / 2 };
@@ -557,10 +720,11 @@ function areaRect(key, W, H) {
   return { x: 0, y: 0, w: W, h: H };
 }
 
-function boxInRect(b, r) {
+function boxInRect(b, r, loose) {
   const cx = b.x + b.w / 2;
   const cy = b.y + b.h / 2;
   if (cx < r.x || cx > r.x + r.w || cy < r.y || cy > r.y + r.h) return false;
+  if (loose) return true;
   const ix = Math.max(0, Math.min(b.x + b.w, r.x + r.w) - Math.max(b.x, r.x));
   const iy = Math.max(0, Math.min(b.y + b.h, r.y + r.h) - Math.max(b.y, r.y));
   return ix * iy >= b.w * b.h * 0.5;
@@ -642,6 +806,9 @@ function bestBoxGroup(boxes, region) {
 }
 
 function detectBoxes(cv, cvsrc, area) {
+  if (area === "custom" && !customRect) {
+    return { boxes: [], areaKey: "custom", rect: areaRect("custom", cvsrc.cols, cvsrc.rows), candidates: [] };
+  }
   const gray = new cv.Mat();
   const edges = new cv.Mat();
   const dil = new cv.Mat();
@@ -686,7 +853,7 @@ function detectBoxes(cv, cvsrc, area) {
   const ranked = [];
   for (const key of keys) {
     const rect = areaRect(key, W, H);
-    const inside = picked.filter((b) => boxInRect(b, rect));
+    const inside = picked.filter((b) => boxInRect(b, rect, area === "custom"));
     if (inside.length < 2) continue;
     const group = bestBoxGroup(inside, rect);
     const boxes = group.boxes.slice().sort((a, b) => (a.y - b.y) || (a.x - b.x));
@@ -986,12 +1153,18 @@ function drawOverlay(boxes, areaKey, rect) {
   }
   const img = el("shotPreview");
   const W = img.naturalWidth || 1, H = img.naturalHeight || 1;
-  const region = areaKey && areaKey !== "auto" && areaKey !== "full" && rect
+  const isCustom = areaKey === "custom";
+  const region = areaKey && areaKey !== "auto" && areaKey !== "full" && !isCustom && rect
     ? `<div class="shot-region" style="left:${(rect.x / W) * 100}%;top:${(rect.y / H) * 100}%;width:${(rect.w / W) * 100}%;height:${(rect.h / H) * 100}%"></div>`
     : "";
   ov.innerHTML = region + boxes.map((b, i) =>
     `<div class="shot-box" style="left:${(b.x / W) * 100}%;top:${(b.y / H) * 100}%;width:${(b.w / W) * 100}%;height:${(b.h / H) * 100}%"><span>${i + 1}</span></div>`
   ).join("");
+  const crop = el("shotCrop");
+  if (crop) {
+    if (isCustom && rect) showCropBox(rect);
+    else crop.classList.add("hidden");
+  }
 }
 
 async function readNameForBox(worker, img, box) {
@@ -1003,6 +1176,7 @@ async function readNameForBox(worker, img, box) {
 
 async function handleImageFile(file) {
   if (ocrBusy) return;
+  const sameFile = lastShotFile === file;
   ocrBusy = true;
   el("ocrBar").classList.remove("hidden");
   el("clearShotBtn").classList.remove("hidden");
@@ -1017,12 +1191,20 @@ async function handleImageFile(file) {
     if (lastShotUrl) URL.revokeObjectURL(lastShotUrl);
     lastShotUrl = loaded.url;
     lastShotFile = file;
+    if (!sameFile) customRect = null;
     const oldOverlay = el("shotOverlay");
     if (oldOverlay) oldOverlay.remove();
     el("shotPreview").src = loaded.url;
     el("shotPreviewWrap").classList.remove("hidden");
   } catch (e) {
     setOcrStatus(t("ocr.readFail"), 1);
+    ocrBusy = false;
+    return;
+  }
+
+  if (scanArea === "custom" && !customRect) {
+    drawOverlay([], "custom", null);
+    setOcrStatus(t("ocr.chooseArea"), 1);
     ocrBusy = false;
     return;
   }
@@ -1073,8 +1255,11 @@ async function handleImageFile(file) {
 
     const pairs = [];
     const logLines = [];
+    const unmatchedNameTexts = [];
     let pendingUnmatched = 0;
     moodPending = {};
+    namePending = {};
+    namePendingPool = [];
 
     for (let i = 0; i < boxes.length; i++) {
       const b = boxes[i];
@@ -1100,9 +1285,12 @@ async function handleImageFile(file) {
         em = bestEmotion(emText);
       }
 
+      const normNameText = normName(nameText);
       if (name.name) {
         if (sig) moodPending[name.name] = sig;
         if (sig && !em.emotion) pendingUnmatched++;
+      } else if (normNameText.length >= NAME_LEARN_MIN_LEN) {
+        unmatchedNameTexts.push(nameText);
       }
 
       logLines.push(t("ocr.logLine", {
@@ -1118,7 +1306,8 @@ async function handleImageFile(file) {
           conch: name.name,
           emotion: em.emotion || "",
           uncertain: !em.emotion || (name.score || 0) < 1,
-          box: i + 1
+          box: i + 1,
+          rawNameText: nameText
         });
       }
 
@@ -1135,8 +1324,10 @@ async function handleImageFile(file) {
     el("ocrText").textContent = logLines.join("\n");
     el("ocrTextWrap").classList.remove("hidden");
 
+    namePendingPool = unmatchedNameTexts.slice();
     const withEmotion = pairs.filter((p) => p.emotion);
     if (pairs.length) applyDetected(pairs);
+    else namePending = {};
     setOcrStatus(t("ocr.done", { boxes: boxes.length, names: pairs.length, emotions: withEmotion.length }), 1);
   } catch (err) {
     console.error(err);
@@ -1232,11 +1423,14 @@ function applyDetected(pairs) {
   state.selected.clear();
   state.emotions = {};
   state.uncertain = new Set();
+  namePending = {};
   pairs.slice(0, MAX_CONCH).forEach((p) => {
     if (!p.conch || !CONCH_LIST.includes(p.conch)) return;
     state.selected.add(p.conch);
     if (EMOTIONS.includes(p.emotion)) state.emotions[p.conch] = p.emotion;
     if (p.uncertain || !EMOTIONS.includes(p.emotion)) state.uncertain.add(p.conch);
+    const rawNameText = typeof p.rawNameText === "string" ? p.rawNameText : "";
+    if (normName(rawNameText).length >= NAME_LEARN_MIN_LEN) namePending[p.conch] = rawNameText;
   });
   state.compact = state.selected.size > 0;
   lineupExpanded = false;
@@ -1255,6 +1449,9 @@ function clearShot() {
   el("shotPreview").removeAttribute("src");
   const overlay = el("shotOverlay");
   if (overlay) overlay.remove();
+  const crop = el("shotCrop");
+  if (crop) crop.classList.add("hidden");
+  customRect = null;
   if (lastShotUrl) URL.revokeObjectURL(lastShotUrl);
   lastShotUrl = null;
   lastShotFile = null;
@@ -1269,6 +1466,8 @@ function clearShot() {
   lineupExpanded = false;
   state.uncertain.clear();
   moodPending = {};
+  namePending = {};
+  namePendingPool = [];
   if (el("conchGrid")) renderGrid();
 }
 
@@ -1996,16 +2195,20 @@ function renderGrid() {
         const previous = state.emotions[name];
         state.emotions[name] = em;
         state.uncertain.delete(name);
-        let learned = false;
+        let learnedMood = false;
         const sig = moodPending[name];
         if (sig && previous !== em) {
           const iconMatch = matchMoodIcon(sig);
-          if (!iconMatch || iconMatch.emotion !== em) learned = learnMoodIcon(em, sig);
+          if (!iconMatch || iconMatch.emotion !== em) learnedMood = learnMoodIcon(em, sig);
         }
+        let learnedName = false;
+        const rawName = namePending[name];
+        if (rawName) learnedName = learnConchName(name, rawName);
         renderGrid();
         updateCounter();
         refreshResults();
-        if (learned) flashHint(t("pick.moodLearned", { emotion: emotionLabel(em) }));
+        if (learnedMood) flashHint(t("pick.moodLearned", { emotion: emotionLabel(em) }));
+        else if (learnedName) flashHint(t("pick.nameLearned", { name: conchLabel(name) }));
       });
       row.appendChild(btn);
     });
@@ -2019,17 +2222,44 @@ function renderGrid() {
   savePickState();
 }
 
+function takeNamePendingFor(canon) {
+  if (!namePendingPool.length) return "";
+  let bestIdx = namePendingPool.length - 1;
+  let bestScore = -1;
+  for (let i = 0; i < namePendingPool.length; i++) {
+    const norm = normName(namePendingPool[i]);
+    let score = 0;
+    for (const alias of conchAliasIndex()) {
+      if (alias.canon !== canon) continue;
+      score = Math.max(score, nameScore(norm, alias.norm));
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      bestIdx = i;
+    }
+  }
+  return namePendingPool.splice(bestIdx, 1)[0] || "";
+}
+
 function toggleConch(name, forceSelect) {
   if (state.selected.has(name) && !forceSelect) {
     state.selected.delete(name);
     delete state.emotions[name];
     state.uncertain.delete(name);
+    if (namePending[name]) {
+      namePendingPool.push(namePending[name]);
+      delete namePending[name];
+    }
   } else if (!state.selected.has(name)) {
     if (state.selected.size >= MAX_CONCH) {
       flashHint(t("pick.maxFlash", { n: MAX_CONCH }));
       return;
     }
     state.selected.add(name);
+    if (!namePending[name]) {
+      const pending = takeNamePendingFor(name);
+      if (pending) namePending[name] = pending;
+    }
   }
   renderGrid();
   updateCounter();
@@ -2688,6 +2918,17 @@ function resetMoodIcons() {
   if (hint) hint.textContent = t("settings.moodResetDone");
 }
 
+function resetLearnedConchAliases() {
+  learnedConchAliases = loadLearnedConchAliases(); // reset structure
+  CONCH_LIST.forEach((canon) => { learnedConchAliases[canon] = []; });
+  namePending = {};
+  namePendingPool = [];
+  aliasIndexCache = null;
+  try { localStorage.removeItem(NAME_LEARN_KEY); } catch (e) { /* ignore */ }
+  const hint = el("nameLearnHint");
+  if (hint) hint.textContent = t("settings.nameLearnResetDone");
+}
+
 function initSettings() {
   initI18n();
   renderNameSettings();
@@ -2697,6 +2938,8 @@ function initSettings() {
   if (reset) reset.addEventListener("click", resetNameSettings);
   const resetMood = el("resetMoodBtn");
   if (resetMood) resetMood.addEventListener("click", resetMoodIcons);
+  const resetNameLearn = el("resetNameLearnBtn");
+  if (resetNameLearn) resetNameLearn.addEventListener("click", resetLearnedConchAliases);
   initSheetSettings();
 }
 

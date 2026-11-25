@@ -537,6 +537,15 @@ kbd {
 }
 
 .shot-overlay { position: absolute; inset: 0; pointer-events: none; }
+.shot-preview.custom-mode { cursor: crosshair; }
+
+.shot-crop {
+  position: absolute;
+  border: 2px dashed var(--gold);
+  background: rgba(255, 207, 92, 0.08);
+  box-sizing: border-box;
+  pointer-events: none;
+}
 
 .shot-region {
   position: absolute;
