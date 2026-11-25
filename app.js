@@ -844,7 +844,7 @@ function detectBoxes(cv, cvsrc, area) {
     const ar = r.width / r.height;
     // Split-screen screenshots shrink the game to half the width, so the boxes
     // are much smaller relative to the whole image than in a full-screen shot.
-    if (boxArea > WH * 0.002 && boxArea < WH * 0.30 && ar > 0.7 && ar < 1.9) {
+    if (boxArea > WH * 0.002 && boxArea < WH * 0.18 && ar > 0.7 && ar < 1.9) {
       cand.push({ x: r.x, y: r.y, w: r.width, h: r.height, area: boxArea });
     }
   }
@@ -852,13 +852,15 @@ function detectBoxes(cv, cvsrc, area) {
 
   const picked = [];
   for (const b of cand) {
-    let ov = false;
+    let duplicate = false;
     for (const p of picked) {
+      const sizeRatio = b.area / p.area;
+      if (sizeRatio < 0.6 || sizeRatio > 1.6) continue;
       const ix = Math.max(0, Math.min(b.x + b.w, p.x + p.w) - Math.max(b.x, p.x));
       const iy = Math.max(0, Math.min(b.y + b.h, p.y + p.h) - Math.max(b.y, p.y));
-      if (ix * iy > 0.4 * Math.min(b.w * b.h, p.w * p.h)) { ov = true; break; }
+      if (ix * iy > 0.5 * Math.min(b.area, p.area)) { duplicate = true; break; }
     }
-    if (!ov) picked.push(b);
+    if (!duplicate) picked.push(b);
   }
 
   // Look for a coherent grid in each half as well as the full image. This is
@@ -1461,6 +1463,10 @@ function parseConchFromOCR(data) {
     if (best !== null) {
       used.add(best);
       pairs.push({ conch: ch.name, emotion: emotes[best].em });
+    } else {
+      // A stylised mood icon may not OCR; still select the conch and let the
+      // user confirm its mood manually.
+      pairs.push({ conch: ch.name, emotion: "" });
     }
   });
 
