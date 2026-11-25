@@ -760,7 +760,7 @@ function fallbackBoxes(picked, area, W, H) {
   return similar.sort((a, b) => (a.y - b.y) || (a.x - b.x));
 }
 
-function scoreBoxGroup(group, region) {
+function scoreBoxGroup(group, region, referenceArea) {
   const n = group.length;
   if (!n) return { score: -Infinity };
   const areas = group.map((b) => b.w * b.h);
@@ -788,13 +788,22 @@ function scoreBoxGroup(group, region) {
   const offCenter = Math.abs(cx - (region.x + region.w / 2)) / (region.w || 1)
     + Math.abs(cy - (region.y + region.h / 2)) / (region.h || 1);
 
+  // Small decorative icons can also form a neat grid. Prefer boxes close to
+  // the dominant card size in this region so partial presets don't pick them.
+  const sizeFit = referenceArea
+    ? Math.min(1, medianValue(areas) / referenceArea)
+    : 1;
+
   return {
-    score: count * 2.2 + uniform * 1.4 + grid * 1.2 + spread * 0.8 - offCenter * 0.8,
+    score: count * 2.2 + uniform * 1.4 + grid * 1.2 + spread * 0.8
+      + sizeFit * 2.5 - offCenter * 0.8,
     rows: rows.length, cols: cols.length
   };
 }
 
 function bestBoxGroup(boxes, region) {
+  const largest = boxes.map((b) => b.area).sort((a, b) => b - a);
+  const referenceArea = medianValue(largest.slice(0, Math.min(12, largest.length)));
   let best = null;
   for (const seed of boxes) {
     const seedRatio = seed.w / seed.h;
@@ -813,7 +822,7 @@ function bestBoxGroup(boxes, region) {
         - Math.hypot(b.x + b.w / 2 - sx, b.y + b.h / 2 - sy)
       ).slice(0, MAX_CONCH);
     }
-    const scored = scoreBoxGroup(chosen, region);
+    const scored = scoreBoxGroup(chosen, region, referenceArea);
     if (!best || scored.score > best.score) best = { boxes: chosen, score: scored.score, meta: scored };
   }
   return best || { boxes: [], score: -Infinity, meta: null };
@@ -865,7 +874,11 @@ function detectBoxes(cv, cvsrc, area) {
 
   // Look for a coherent grid in each half as well as the full image. This is
   // what lets the locator ignore the unrelated application in a split screen.
-  const keys = area === "auto" ? ["left", "right", "top", "bottom", "full"] : [area];
+  // Also consider the full image for manual presets: a half preset left over
+  // from a split-screen shot must not cut a later full-screen capture in half.
+  const keys = area === "auto"
+    ? ["left", "right", "top", "bottom", "full"]
+    : area === "custom" ? ["custom"] : [area, "full"];
   const ranked = [];
   for (const key of keys) {
     const rect = areaRect(key, W, H);
@@ -1363,7 +1376,9 @@ async function handleImageFile(file) {
         const areaData = await worker.recognize(areaCanvas);
         const whole = parseConchFromOCR(areaData);
         logLines.push("", t("ocr.wholeAreaResult", { n: whole.pairs.length }));
-        if (whole.pairs.length > pairs.length && whole.text) {
+        if (whole.pairs.length > pairs.length
+          && (!pairs.length || whole.pairs.length >= pairs.length + 2)
+          && whole.text) {
           logLines.push(whole.text);
           pairs = whole.pairs.map((p) => ({
             conch: p.conch,
