@@ -746,6 +746,20 @@ function clusterAxis(values, tolerance) {
   return groups;
 }
 
+function fallbackBoxes(picked, area, W, H) {
+  const rect = areaRect(area, W, H);
+  const inside = picked.filter((b) => boxInRect(b, rect, area !== "auto"));
+  if (!inside.length) return [];
+  inside.sort((a, b) => b.area - a.area);
+  const seed = inside[0];
+  const similar = inside.filter((b) => {
+    const scale = Math.sqrt(b.area / seed.area);
+    const ratio = (b.w / b.h) / (seed.w / seed.h);
+    return scale >= 0.5 && scale <= 2 && ratio >= 0.7 && ratio <= 1.4;
+  }).slice(0, MAX_CONCH);
+  return similar.sort((a, b) => (a.y - b.y) || (a.x - b.x));
+}
+
 function scoreBoxGroup(group, region) {
   const n = group.length;
   if (!n) return { score: -Infinity };
@@ -853,7 +867,7 @@ function detectBoxes(cv, cvsrc, area) {
   const ranked = [];
   for (const key of keys) {
     const rect = areaRect(key, W, H);
-    const inside = picked.filter((b) => boxInRect(b, rect, area === "custom"));
+    const inside = picked.filter((b) => boxInRect(b, rect, area !== "auto"));
     if (inside.length < 2) continue;
     const group = bestBoxGroup(inside, rect);
     const boxes = group.boxes.slice().sort((a, b) => (a.y - b.y) || (a.x - b.x));
@@ -871,11 +885,15 @@ function detectBoxes(cv, cvsrc, area) {
   gray.delete(); edges.delete(); dil.delete(); kernel.delete();
   contours.delete(); hier.delete();
 
-  if (!ranked.length || ranked[0].score < 2) {
+  if (!ranked.length || ranked[0].score < 1.5) {
+    const fallback = fallbackBoxes(picked, area, W, H);
     const empty = ranked[0];
     return {
-      boxes: [], areaKey: area, rect: areaRect(area, W, H),
-      meta: empty ? empty.meta : null, candidates: []
+      boxes: fallback,
+      areaKey: area,
+      rect: areaRect(area, W, H),
+      meta: empty ? empty.meta : null,
+      candidates: []
     };
   }
   const seen = new Set();
@@ -893,6 +911,21 @@ function detectBoxes(cv, cvsrc, area) {
     boxes: best.boxes, areaKey: best.areaKey, rect: best.rect,
     meta: best.meta, candidates
   };
+}
+
+function cropRect(img, rect, scale) {
+  const x = Math.max(0, Math.min(img.naturalWidth, rect.x));
+  const y = Math.max(0, Math.min(img.naturalHeight, rect.y));
+  const w = Math.max(1, Math.min(img.naturalWidth - x, rect.w));
+  const h = Math.max(1, Math.min(img.naturalHeight - y, rect.h));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(w * scale));
+  canvas.height = Math.max(1, Math.round(h * scale));
+  const ctx = canvas.getContext("2d");
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(img, x, y, w, h, 0, 0, canvas.width, canvas.height);
+  return canvas;
 }
 
 function cropRegion(img, b, y0, y1, scale) {
@@ -1253,7 +1286,7 @@ async function handleImageFile(file) {
       area: scanAreaLabel(picked.areaKey)
     }), 0.15);
 
-    const pairs = [];
+    let pairs = [];
     const logLines = [];
     const unmatchedNameTexts = [];
     let pendingUnmatched = 0;
@@ -1317,6 +1350,28 @@ async function handleImageFile(file) {
         name: name.name ? conchLabel(name.name) : "?",
         emotion: em.emotion ? emotionLabel(em.emotion) : "?"
       }), 0.15 + 0.85 * ((i + 1) / boxes.length));
+    }
+
+    // Small split-screen cards can defeat the box crop. Fall back to reading
+    // the whole selected area and pairing conch names with nearby mood text.
+    if (pairs.length < 2) {
+      setOcrStatus(t("ocr.wholeArea"), 0.92);
+      try {
+        const areaCanvas = cropRect(img, picked.rect, 2);
+        const areaData = await worker.recognize(areaCanvas);
+        const whole = parseConchFromOCR(areaData);
+        logLines.push("", t("ocr.wholeAreaResult", { n: whole.pairs.length }));
+        if (whole.pairs.length > pairs.length && whole.text) {
+          logLines.push(whole.text);
+          pairs = whole.pairs.map((p) => ({
+            conch: p.conch,
+            emotion: p.emotion || "",
+            uncertain: !p.emotion,
+            box: "-"
+          }));
+          namePendingPool = [];
+        }
+      } catch (e) { /* whole-area fallback is best effort */ }
     }
 
     if (pendingUnmatched) logLines.push("", t("ocr.moodLearnHint"));
