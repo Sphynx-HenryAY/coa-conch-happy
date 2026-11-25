@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png" />
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
-  <link rel="stylesheet" href="styles.css?v=18" />
+  <link rel="stylesheet" href="styles.css?v=19" />
 </head>
 <body data-page="index">
   <div class="bg-glow"></div>
@@ -58,6 +58,15 @@
           <p data-i18n-html="shot.dropHtml">拖放截圖到此處，或 <strong>點擊選擇</strong>，也可直接 <kbd>Ctrl</kbd>+<kbd>V</kbd> 貼上</p>
           <span class="dropzone-sub" data-i18n="shot.sub">自動辨識 6 隻螺與牠們的心情</span>
         </div>
+      </div>
+      <div class="scan-area" role="group" data-i18n-aria="shot.scanAreaLabel">
+        <span class="scan-label" data-i18n="shot.scanArea">掃描範圍</span>
+        <button class="scan-btn" type="button" data-scan="auto" data-i18n="shot.scanAuto">自動</button>
+        <button class="scan-btn" type="button" data-scan="full" data-i18n="shot.scanFull">全圖</button>
+        <button class="scan-btn" type="button" data-scan="left" data-i18n="shot.scanLeft">左半</button>
+        <button class="scan-btn" type="button" data-scan="right" data-i18n="shot.scanRight">右半</button>
+        <button class="scan-btn" type="button" data-scan="top" data-i18n="shot.scanTop">上半</button>
+        <button class="scan-btn" type="button" data-scan="bottom" data-i18n="shot.scanBottom">下半</button>
       </div>
       <div id="shotPreviewWrap" class="shot-preview hidden">
         <img id="shotPreview" data-i18n-alt="shot.previewAlt" alt="截圖預覽" />
@@ -134,8 +143,8 @@
   <script src="vendor/opencv/opencv.js"></script>
   <script src="vendor/xlsx/xlsx.full.min.js"></script>
   <script src="vendor/tesseract/tesseract.min.js"></script>
-  <script src="i18n.js?v=18"></script>
-  <script src="app.js?v=18"></script>
+  <script src="i18n.js?v=19"></script>
+  <script src="app.js?v=19"></script>
   <script>
     if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
       addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));

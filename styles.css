@@ -490,6 +490,27 @@ body.page-records main { max-width: 1440px; }
 .dropzone-icon { font-size: 34px; }
 .dropzone-sub { color: var(--muted); font-size: 13px; }
 
+.scan-area { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.scan-label { font-size: 13px; color: var(--muted); margin-right: 4px; }
+.scan-btn {
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: transparent;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all .15s ease;
+}
+.scan-btn:hover { color: var(--text); border-color: var(--accent); }
+.scan-btn.on {
+  color: #06101f;
+  background: var(--accent);
+  border-color: var(--accent);
+  font-weight: 700;
+}
+
 kbd {
   padding: 1px 6px;
   border-radius: 6px;
@@ -516,6 +537,13 @@ kbd {
 }
 
 .shot-overlay { position: absolute; inset: 0; pointer-events: none; }
+
+.shot-region {
+  position: absolute;
+  border: 1px dashed rgba(109, 139, 255, 0.9);
+  background: rgba(109, 139, 255, 0.06);
+  box-sizing: border-box;
+}
 
 .shot-box {
   position: absolute;

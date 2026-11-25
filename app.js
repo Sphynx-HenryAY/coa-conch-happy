@@ -11,9 +11,12 @@ const LANG_KEY = "conchLang_v1";
 const NAMES_KEY = "conchNames_v1";
 const PICK_KEY = "conchPick_v1";
 const MOOD_ICONS_KEY = "conchMoodIcons_v1";
+const NAME_LEARN_KEY = "conchNameLearned_v1";
 const SHEET_URL_KEY = "conchSheetUrl_v1";
 const SHEET_TOKEN_KEY = "conchSheetToken_v1";
 const SHEET_SERVICE_KEY = "conchSheetServiceUrl_v1";
+const SCAN_AREA_KEY = "conchScanArea_v1";
+const SCAN_AREAS = ["auto", "full", "left", "right", "top", "bottom"];
 // Deployed once from apps-script.gs (execute as Me, access Anyone).
 // Users only need to paste their Google Sheet link; this URL is preconfigured.
 // Apps Script deployment ID: AKfycbxcWUvXPI6VgkuGzEqcAiYDMwD8S_H---y-qKtynEdHSTVPT3POXIHa9TmktJxBfhvz
@@ -22,6 +25,8 @@ const MOOD_SIG = 14;
 const MOOD_MATCH_MIN = 0.9;
 const MOOD_MATCH_MARGIN = 0.04;
 const MOOD_MAX_TEMPLATES = 10;
+const NAME_LEARN_MAX = 12;
+const NAME_LEARN_MIN_LEN = 2;
 
 const state = {
   selected: new Set(),
@@ -47,6 +52,18 @@ function loadLang() {
 }
 
 let lang = loadLang();
+
+function loadScanArea() {
+  try {
+    const saved = localStorage.getItem(SCAN_AREA_KEY);
+    if (saved && SCAN_AREAS.includes(saved)) return saved;
+  } catch (e) { /* ignore */ }
+  return "auto";
+}
+
+let scanArea = loadScanArea();
+let lastShotFile = null;
+let lastShotUrl = null;
 
 function t(key, vars) {
   const table = I18N[lang] || I18N["zh-Hant"];
@@ -415,6 +432,16 @@ function setupShot() {
     if (input.files && input.files[0]) handleImageFile(input.files[0]);
   });
 
+  document.querySelectorAll("[data-scan]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const next = btn.dataset.scan;
+      if (!SCAN_AREAS.includes(next)) return;
+      setScanArea(next);
+      if (lastShotFile && !ocrBusy) handleImageFile(lastShotFile);
+    });
+  });
+  updateScanButtons();
+
   const dz = el("dropzone");
   dz.addEventListener("click", () => input.click());
   dz.addEventListener("keydown", (e) => {
@@ -442,6 +469,29 @@ function setupShot() {
       }
     }
   });
+}
+
+function setScanArea(area) {
+  if (!SCAN_AREAS.includes(area)) return;
+  scanArea = area;
+  try { localStorage.setItem(SCAN_AREA_KEY, area); } catch (e) { /* ignore */ }
+  updateScanButtons();
+}
+
+function updateScanButtons() {
+  document.querySelectorAll("[data-scan]").forEach((btn) => {
+    const on = btn.dataset.scan === scanArea;
+    btn.classList.toggle("on", on);
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+  });
+}
+
+function scanAreaLabel(area) {
+  const keys = {
+    auto: "shot.scanAuto", full: "shot.scanFull", left: "shot.scanLeft",
+    right: "shot.scanRight", top: "shot.scanTop", bottom: "shot.scanBottom"
+  };
+  return t(keys[area] || "shot.scanAuto");
 }
 
 function setOcrStatus(text, pct) {
@@ -499,7 +549,99 @@ function loadOpenCV() {
   return cvPromise;
 }
 
-function detectBoxes(cv, cvsrc) {
+function areaRect(key, W, H) {
+  if (key === "left") return { x: 0, y: 0, w: W / 2, h: H };
+  if (key === "right") return { x: W / 2, y: 0, w: W / 2, h: H };
+  if (key === "top") return { x: 0, y: 0, w: W, h: H / 2 };
+  if (key === "bottom") return { x: 0, y: H / 2, w: W, h: H / 2 };
+  return { x: 0, y: 0, w: W, h: H };
+}
+
+function boxInRect(b, r) {
+  const cx = b.x + b.w / 2;
+  const cy = b.y + b.h / 2;
+  if (cx < r.x || cx > r.x + r.w || cy < r.y || cy > r.y + r.h) return false;
+  const ix = Math.max(0, Math.min(b.x + b.w, r.x + r.w) - Math.max(b.x, r.x));
+  const iy = Math.max(0, Math.min(b.y + b.h, r.y + r.h) - Math.max(b.y, r.y));
+  return ix * iy >= b.w * b.h * 0.5;
+}
+
+function medianValue(values) {
+  const sorted = values.slice().sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+function clusterAxis(values, tolerance) {
+  const groups = [];
+  values.slice().sort((a, b) => a - b).forEach((v) => {
+    const last = groups[groups.length - 1];
+    if (last && v - last[last.length - 1] <= tolerance) last.push(v);
+    else groups.push([v]);
+  });
+  return groups;
+}
+
+function scoreBoxGroup(group, region) {
+  const n = group.length;
+  if (!n) return { score: -Infinity };
+  const areas = group.map((b) => b.w * b.h);
+  const mean = areas.reduce((a, b) => a + b, 0) / n;
+  const deviation = Math.sqrt(areas.reduce((a, b) => a + (b - mean) ** 2, 0) / n);
+  const uniform = mean > 0 ? Math.max(0, 1 - deviation / mean / 0.4) : 0;
+
+  const centers = group.map((b) => ({ x: b.x + b.w / 2, y: b.y + b.h / 2 }));
+  const mw = medianValue(group.map((b) => b.w));
+  const mh = medianValue(group.map((b) => b.h));
+  const rows = clusterAxis(centers.map((c) => c.y), Math.max(4, mh * 0.6));
+  const cols = clusterAxis(centers.map((c) => c.x), Math.max(4, mw * 0.6));
+  const grid = rows.length >= 2 && cols.length >= 2
+    ? (Math.min(rows.length, 3) / 3) * 0.6 + (Math.min(cols.length, 3) / 3) * 0.4
+    : 0;
+
+  const xs = centers.map((c) => c.x);
+  const ys = centers.map((c) => c.y);
+  const spanX = (Math.max.apply(null, xs) - Math.min.apply(null, xs)) / (region.w || 1);
+  const spanY = (Math.max.apply(null, ys) - Math.min.apply(null, ys)) / (region.h || 1);
+  const spread = Math.min(1, (spanX + spanY) / 0.9);
+  const count = Math.min(n, MAX_CONCH) / MAX_CONCH;
+  const cx = xs.reduce((a, b) => a + b, 0) / n;
+  const cy = ys.reduce((a, b) => a + b, 0) / n;
+  const offCenter = Math.abs(cx - (region.x + region.w / 2)) / (region.w || 1)
+    + Math.abs(cy - (region.y + region.h / 2)) / (region.h || 1);
+
+  return {
+    score: count * 2.2 + uniform * 1.4 + grid * 1.2 + spread * 0.8 - offCenter * 0.8,
+    rows: rows.length, cols: cols.length
+  };
+}
+
+function bestBoxGroup(boxes, region) {
+  let best = null;
+  for (const seed of boxes) {
+    const seedRatio = seed.w / seed.h;
+    const seedSize = Math.sqrt(seed.w * seed.h);
+    const similar = boxes.filter((b) => {
+      const scale = Math.sqrt(b.w * b.h) / seedSize;
+      const ratio = (b.w / b.h) / seedRatio;
+      return scale >= 0.65 && scale <= 1.55 && ratio >= 0.75 && ratio <= 1.35;
+    });
+    let chosen = similar;
+    if (chosen.length > MAX_CONCH) {
+      const sx = seed.x + seed.w / 2;
+      const sy = seed.y + seed.h / 2;
+      chosen = chosen.slice().sort((a, b) =>
+        Math.hypot(a.x + a.w / 2 - sx, a.y + a.h / 2 - sy)
+        - Math.hypot(b.x + b.w / 2 - sx, b.y + b.h / 2 - sy)
+      ).slice(0, MAX_CONCH);
+    }
+    const scored = scoreBoxGroup(chosen, region);
+    if (!best || scored.score > best.score) best = { boxes: chosen, score: scored.score, meta: scored };
+  }
+  return best || { boxes: [], score: -Infinity, meta: null };
+}
+
+function detectBoxes(cv, cvsrc, area) {
   const gray = new cv.Mat();
   const edges = new cv.Mat();
   const dil = new cv.Mat();
@@ -517,10 +659,12 @@ function detectBoxes(cv, cvsrc) {
     const c = contours.get(i);
     const r = cv.boundingRect(c);
     c.delete();
-    const area = r.width * r.height;
+    const boxArea = r.width * r.height;
     const ar = r.width / r.height;
-    if (area > WH * 0.03 && area < WH * 0.30 && ar > 0.7 && ar < 1.9) {
-      cand.push({ x: r.x, y: r.y, w: r.width, h: r.height, area });
+    // Split-screen screenshots shrink the game to half the width, so the boxes
+    // are much smaller relative to the whole image than in a full-screen shot.
+    if (boxArea > WH * 0.002 && boxArea < WH * 0.30 && ar > 0.7 && ar < 1.9) {
+      cand.push({ x: r.x, y: r.y, w: r.width, h: r.height, area: boxArea });
     }
   }
   cand.sort((a, b) => b.area - a.area);
@@ -535,13 +679,53 @@ function detectBoxes(cv, cvsrc) {
     }
     if (!ov) picked.push(b);
   }
-  const max = picked.length ? picked[0].area : 0;
-  const final = picked.filter((b) => b.area >= max * 0.5).slice(0, MAX_CONCH);
-  final.sort((a, b) => (a.y - b.y) || (a.x - b.x));
+
+  // Look for a coherent grid in each half as well as the full image. This is
+  // what lets the locator ignore the unrelated application in a split screen.
+  const keys = area === "auto" ? ["left", "right", "top", "bottom", "full"] : [area];
+  const ranked = [];
+  for (const key of keys) {
+    const rect = areaRect(key, W, H);
+    const inside = picked.filter((b) => boxInRect(b, rect));
+    if (inside.length < 2) continue;
+    const group = bestBoxGroup(inside, rect);
+    const boxes = group.boxes.slice().sort((a, b) => (a.y - b.y) || (a.x - b.x));
+    ranked.push(Object.assign({}, group, { boxes, areaKey: key, rect }));
+  }
+  ranked.sort((a, b) => {
+    const diff = b.score - a.score;
+    if (Math.abs(diff) <= 0.05) {
+      if (a.areaKey === "full" && b.areaKey !== "full") return 1;
+      if (b.areaKey === "full" && a.areaKey !== "full") return -1;
+    }
+    return diff;
+  });
 
   gray.delete(); edges.delete(); dil.delete(); kernel.delete();
   contours.delete(); hier.delete();
-  return final;
+
+  if (!ranked.length || ranked[0].score < 2) {
+    const empty = ranked[0];
+    return {
+      boxes: [], areaKey: area, rect: areaRect(area, W, H),
+      meta: empty ? empty.meta : null, candidates: []
+    };
+  }
+  const seen = new Set();
+  const candidates = [];
+  for (const c of ranked) {
+    const signature = c.boxes.map((b) =>
+      `${Math.round(b.x)},${Math.round(b.y)},${Math.round(b.w)},${Math.round(b.h)}`).join("|");
+    if (seen.has(signature)) continue;
+    seen.add(signature);
+    candidates.push(c);
+    if (candidates.length >= 3) break;
+  }
+  const best = candidates[0];
+  return {
+    boxes: best.boxes, areaKey: best.areaKey, rect: best.rect,
+    meta: best.meta, candidates
+  };
 }
 
 function cropRegion(img, b, y0, y1, scale) {
@@ -791,7 +975,7 @@ function iconSignature(img, box) {
   }
 }
 
-function drawOverlay(boxes) {
+function drawOverlay(boxes, areaKey, rect) {
   const wrap = el("shotPreviewWrap");
   let ov = el("shotOverlay");
   if (!ov) {
@@ -802,9 +986,19 @@ function drawOverlay(boxes) {
   }
   const img = el("shotPreview");
   const W = img.naturalWidth || 1, H = img.naturalHeight || 1;
-  ov.innerHTML = boxes.map((b, i) =>
+  const region = areaKey && areaKey !== "auto" && areaKey !== "full" && rect
+    ? `<div class="shot-region" style="left:${(rect.x / W) * 100}%;top:${(rect.y / H) * 100}%;width:${(rect.w / W) * 100}%;height:${(rect.h / H) * 100}%"></div>`
+    : "";
+  ov.innerHTML = region + boxes.map((b, i) =>
     `<div class="shot-box" style="left:${(b.x / W) * 100}%;top:${(b.y / H) * 100}%;width:${(b.w / W) * 100}%;height:${(b.h / H) * 100}%"><span>${i + 1}</span></div>`
   ).join("");
+}
+
+async function readNameForBox(worker, img, box) {
+  const canvas = cropRegion(img, box, 0.0, 0.5, 3).canvas;
+  const data = await worker.recognize(canvas);
+  const text = (data.data.text || "").trim();
+  return { text, name: bestConch(text) };
 }
 
 async function handleImageFile(file) {
@@ -820,6 +1014,9 @@ async function handleImageFile(file) {
   try {
     const loaded = await loadImageEl(file);
     img = loaded.img;
+    if (lastShotUrl) URL.revokeObjectURL(lastShotUrl);
+    lastShotUrl = loaded.url;
+    lastShotFile = file;
     const oldOverlay = el("shotOverlay");
     if (oldOverlay) oldOverlay.remove();
     el("shotPreview").src = loaded.url;
@@ -834,18 +1031,46 @@ async function handleImageFile(file) {
     setOcrStatus(t("ocr.detectBoxes"), 0.05);
     const cv = (await loadOpenCV()).cv;
     const src = cv.imread(img);
-    const boxes = detectBoxes(cv, src);
+    const found = detectBoxes(cv, src, scanArea);
     src.delete();
-    drawOverlay(boxes);
 
-    if (!boxes.length) {
-      setOcrStatus(t("ocr.noBoxes"), 1);
+    if (!found.boxes.length) {
+      drawOverlay([], found.areaKey, found.rect);
+      setOcrStatus(t("ocr.noBoxes", { area: scanAreaLabel(found.areaKey) }), 1);
       ocrBusy = false;
       return;
     }
-    setOcrStatus(t("ocr.boxesFound", { n: boxes.length }), 0.15);
 
     const worker = await getOcrWorker();
+    let picked = found;
+    let cachedNames = [];
+
+    // When two halves both look like a grid (e.g. a game window beside a
+    // chat/app window), let the recognised conch names break the tie.
+    const rivals = found.candidates.slice(1).filter((c) =>
+      c.boxes.length >= 3 && found.candidates[0].score - c.score <= 1
+    ).slice(0, 2);
+    if (rivals.length) {
+      setOcrStatus(t("ocr.checkRegions"), 0.12);
+      let bestPick = null;
+      for (const candidate of [found.candidates[0]].concat(rivals)) {
+        const reads = [];
+        for (const b of candidate.boxes) reads.push(await readNameForBox(worker, img, b));
+        const hits = reads.filter((r) => r.name.name).length;
+        const rank = hits * 10 + candidate.score;
+        if (!bestPick || rank > bestPick.rank) bestPick = { candidate, reads, rank };
+      }
+      picked = bestPick.candidate;
+      cachedNames = bestPick.reads;
+    }
+
+    const boxes = picked.boxes;
+    drawOverlay(boxes, picked.areaKey, picked.rect);
+    setOcrStatus(t("ocr.boxesFound", {
+      n: boxes.length,
+      area: scanAreaLabel(picked.areaKey)
+    }), 0.15);
+
     const pairs = [];
     const logLines = [];
     let pendingUnmatched = 0;
@@ -853,11 +1078,9 @@ async function handleImageFile(file) {
 
     for (let i = 0; i < boxes.length; i++) {
       const b = boxes[i];
-
-      const nameCanvas = cropRegion(img, b, 0.0, 0.5, 3).canvas;
-      const nd = await worker.recognize(nameCanvas);
-      const nameText = (nd.data.text || "").trim();
-      const name = bestConch(nameText);
+      const read = cachedNames[i] || await readNameForBox(worker, img, b);
+      const nameText = read.text;
+      const name = read.name;
 
       const sig = iconSignature(img, b);
       let em = { emotion: null, count: 0 };
@@ -1030,6 +1253,11 @@ function applyDetected(pairs) {
 
 function clearShot() {
   el("shotPreview").removeAttribute("src");
+  const overlay = el("shotOverlay");
+  if (overlay) overlay.remove();
+  if (lastShotUrl) URL.revokeObjectURL(lastShotUrl);
+  lastShotUrl = null;
+  lastShotFile = null;
   el("shotPreviewWrap").classList.add("hidden");
   el("ocrBar").classList.add("hidden");
   el("ocrTextWrap").classList.add("hidden");
